@@ -23,11 +23,11 @@
 
 ```shell
 # Claude Code
-/plugin marketplace add alimobrem/skills-for-argo
+/plugin marketplace add redhat-developer/agentic-skills
 /plugin install openshift-gitops@openshift
 
 # Any other agent — Codex, Cline, Amp, Cursor, Antigravity, and 15 more
-npx skills add alimobrem/skills-for-argo
+npx skills add redhat-developer/agentic-skills
 ```
 
 Then just describe what you need — skills activate on context, you never name them:
@@ -74,7 +74,7 @@ Add to `$REPO_ROOT/.agents/plugins/marketplace.json` or `~/.agents/plugins/marke
   "category": "Developer Tools",
   "source": {
     "source": "url",
-    "url": "https://github.com/alimobrem/skills-for-argo.git",
+    "url": "https://github.com/redhat-developer/agentic-skills.git",
     "ref": "main"
   },
   "policy": {

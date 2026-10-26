@@ -1,10 +1,10 @@
 {
   "author": {
     "name": "The OpenShift Agent Skills authors",
-    "url": "https://github.com/alimobrem/skills-for-argo"
+    "url": "https://github.com/redhat-developer/agentic-skills"
   },
   "description": "Skills to turn AI agents into Red Hat OpenShift GitOps engineers",
-  "homepage": "https://github.com/alimobrem/skills-for-argo",
+  "homepage": "https://github.com/redhat-developer/agentic-skills",
   "interface": {
     "capabilities": [
       "Read",
@@ -18,7 +18,7 @@
   },
   "license": "MIT",
   "name": "openshift-gitops",
-  "repository": "https://github.com/alimobrem/skills-for-argo",
+  "repository": "https://github.com/redhat-developer/agentic-skills",
   "skills": "./skills/",
   "version": "0.0.1"
 }

@@ -7,7 +7,7 @@ for contributing to this project.
 
 ### Reporting Issues
 
-- Use [GitHub Issues](https://github.com/alimobrem/skills-for-argo/issues) to report bugs or suggest features
+- Use [GitHub Issues](https://github.com/redhat-developer/agentic-skills/issues) to report bugs or suggest features
 - Include the skill name, agent platform (Claude Code, Copilot, Codex), and steps to reproduce
 - For inaccurate YAML generation, include the prompt used and the expected vs actual output
 

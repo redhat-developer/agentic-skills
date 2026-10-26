@@ -7,7 +7,7 @@
 
 ```shell
 # Install the plugin
-/plugin marketplace add alimobrem/skills-for-argo
+/plugin marketplace add redhat-developer/agentic-skills
 /plugin install argo-skills@argocd
 
 # Verify it loaded
