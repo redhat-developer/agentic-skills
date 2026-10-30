@@ -1,0 +1,22 @@
+apiVersion: backstage.io/v1alpha1
+kind: System
+metadata:
+  name: agentic-skills
+  title: Agentic Skills
+  description: >
+    Agent skills for Red Hat OpenShift layered products.
+    Provides AI-powered GitOps workflows for OpenShift GitOps (Argo CD,
+    Argo Rollouts) including knowledge, auditing, debugging, operations,
+    performance tuning, and team onboarding.
+  tags:
+    - ai-skill
+    - agentic
+    - red-hat
+    - openshift
+  annotations:
+    agentic.redhat.com/repository: https://github.com/redhat-developer/agentic-skills
+    github.com/project-slug: redhat-developer/agentic-skills
+spec:
+  owner: group:redhat/ai5-marketplace
+  dependencyOf:
+    - airesource:ai5-marketplace/openshift-gitops

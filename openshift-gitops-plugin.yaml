@@ -1,0 +1,46 @@
+apiVersion: backstage.io/v1alpha1
+kind: AiResource
+metadata:
+  name: openshift-gitops
+  namespace: ai5-marketplace
+  title: OpenShift GitOps
+  description: >
+    Skills for Red Hat OpenShift GitOps (Argo CD + Argo Rollouts) — knowledge
+    and manifest generation, repository auditing, live cluster debugging,
+    operations, performance tuning, and GitOps-first team onboarding.
+  labels:
+    distribution: external
+  tags:
+    - ai-skill
+    - gitops
+    - argocd
+    - openshift
+  annotations:
+    agentic.redhat.com/repository: https://github.com/redhat-developer/agentic-skills
+    agentic.redhat.com/path: .
+    agentic.redhat.com/lola-module: "true"
+    agentic.redhat.com/lola-module-name: openshift-gitops
+    github.com/project-slug: redhat-developer/agentic-skills
+  links:
+    - url: https://github.com/redhat-developer/agentic-skills
+      title: Source Repository
+      icon: github
+spec:
+  type: plugin
+  lifecycle: beta
+  owner: group:redhat/ai5-marketplace
+  system: default/agentic-skills
+  disciplines:
+    - gitops
+    - devops
+  categories:
+    - cluster-management
+    - operations
+  agents: []
+  dependencyOf:
+    - airesource:ai5-marketplace/argo-knowledge
+    - airesource:ai5-marketplace/argo-repo-audit
+    - airesource:ai5-marketplace/argo-cluster-debug
+    - airesource:ai5-marketplace/argo-operations
+    - airesource:ai5-marketplace/argo-performance-tuning
+    - airesource:ai5-marketplace/argo-team-onboard
