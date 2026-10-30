@@ -1,0 +1,22 @@
+apiVersion: backstage.io/v1alpha1
+kind: Location
+metadata:
+  name: agentic-skills
+  title: Agentic Skills
+  description: >
+    Root catalog entry point for the agentic-skills repository.
+    Points to the system entity, plugin manifest, and all skill manifests
+    for Compass ingestion.
+  annotations:
+    agentic.redhat.com/repository: https://github.com/redhat-developer/agentic-skills
+    github.com/project-slug: redhat-developer/agentic-skills
+spec:
+  targets:
+    - ./system.yaml
+    - ./openshift-gitops-plugin.yaml
+    - ./skills/gitops/argo-knowledge/catalog-info.yaml
+    - ./skills/gitops/argo-repo-audit/catalog-info.yaml
+    - ./skills/gitops/argo-cluster-debug/catalog-info.yaml
+    - ./skills/gitops/argo-operations/catalog-info.yaml
+    - ./skills/gitops/argo-performance-tuning/catalog-info.yaml
+    - ./skills/gitops/argo-team-onboard/catalog-info.yaml
