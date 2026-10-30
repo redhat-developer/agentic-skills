@@ -1,0 +1,32 @@
+apiVersion: backstage.io/v1alpha1
+kind: AiResource
+metadata:
+  name: argo-team-onboard
+  namespace: ai5-marketplace
+  title: Argo Team Onboard
+  description: >
+    Onboard app teams onto Argo CD the GitOps way — generates tenant config (AppProject, Application, RBAC, Namespace, quotas, NetworkPolicies) and commits it to the GitOps repo.
+  labels:
+    distribution: external
+  annotations:
+    backstage.io/source-location: >-
+      url:https://github.com/redhat-developer/agentic-skills/blob/main/skills/gitops/argo-team-onboard/SKILL.md
+  tags:
+    - ai-skill
+    - gitops
+    - argocd
+  links:
+    - url: https://github.com/redhat-developer/agentic-skills
+      title: Source Repository
+      icon: github
+spec:
+  type: skill
+  lifecycle: beta
+  owner: group:redhat/ai5-marketplace
+  disciplines:
+    - gitops
+  categories:
+    - cluster-management
+  agents: []
+  dependsOn:
+    - airesource:ai5-marketplace/openshift-gitops

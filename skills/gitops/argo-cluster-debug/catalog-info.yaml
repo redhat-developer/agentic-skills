@@ -1,0 +1,32 @@
+apiVersion: backstage.io/v1alpha1
+kind: AiResource
+metadata:
+  name: argo-cluster-debug
+  namespace: ai5-marketplace
+  title: Argo Cluster Debug
+  description: >
+    Debug and troubleshoot Red Hat OpenShift GitOps on live clusters — inspects Argo CD Application sync status, health checks, controller logs, and Argo Rollouts failures.
+  labels:
+    distribution: external
+  annotations:
+    backstage.io/source-location: >-
+      url:https://github.com/redhat-developer/agentic-skills/blob/main/skills/gitops/argo-cluster-debug/SKILL.md
+  tags:
+    - ai-skill
+    - gitops
+    - argocd
+  links:
+    - url: https://github.com/redhat-developer/agentic-skills
+      title: Source Repository
+      icon: github
+spec:
+  type: skill
+  lifecycle: beta
+  owner: group:redhat/ai5-marketplace
+  disciplines:
+    - gitops
+  categories:
+    - cluster-management
+  agents: []
+  dependsOn:
+    - airesource:ai5-marketplace/openshift-gitops

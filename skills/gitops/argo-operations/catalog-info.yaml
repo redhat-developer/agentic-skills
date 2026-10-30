@@ -1,0 +1,32 @@
+apiVersion: backstage.io/v1alpha1
+kind: AiResource
+metadata:
+  name: argo-operations
+  namespace: ai5-marketplace
+  title: Argo Operations
+  description: >
+    Set up, deploy, promote, and manage Red Hat OpenShift GitOps resources on live clusters. Covers installation, Application creation, sync, rollout promotion, and maintenance.
+  labels:
+    distribution: external
+  annotations:
+    backstage.io/source-location: >-
+      url:https://github.com/redhat-developer/agentic-skills/blob/main/skills/gitops/argo-operations/SKILL.md
+  tags:
+    - ai-skill
+    - gitops
+    - argocd
+  links:
+    - url: https://github.com/redhat-developer/agentic-skills
+      title: Source Repository
+      icon: github
+spec:
+  type: skill
+  lifecycle: beta
+  owner: group:redhat/ai5-marketplace
+  disciplines:
+    - gitops
+  categories:
+    - cluster-management
+  agents: []
+  dependsOn:
+    - airesource:ai5-marketplace/openshift-gitops

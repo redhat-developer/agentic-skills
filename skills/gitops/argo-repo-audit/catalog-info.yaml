@@ -1,0 +1,32 @@
+apiVersion: backstage.io/v1alpha1
+kind: AiResource
+metadata:
+  name: argo-repo-audit
+  namespace: ai5-marketplace
+  title: Argo Repo Audit
+  description: >
+    Audit and validate Argo CD GitOps repositories by scanning local repo files — reviews AppProject RBAC, sync policies, operational best practices, and scans for plaintext credentials.
+  labels:
+    distribution: external
+  annotations:
+    backstage.io/source-location: >-
+      url:https://github.com/redhat-developer/agentic-skills/blob/main/skills/gitops/argo-repo-audit/SKILL.md
+  tags:
+    - ai-skill
+    - gitops
+    - argocd
+  links:
+    - url: https://github.com/redhat-developer/agentic-skills
+      title: Source Repository
+      icon: github
+spec:
+  type: skill
+  lifecycle: beta
+  owner: group:redhat/ai5-marketplace
+  disciplines:
+    - gitops
+  categories:
+    - cluster-management
+  agents: []
+  dependsOn:
+    - airesource:ai5-marketplace/openshift-gitops
