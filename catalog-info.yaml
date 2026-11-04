@@ -17,6 +17,4 @@ spec:
     - ./skills/gitops/argo-knowledge/catalog-info.yaml
     - ./skills/gitops/argo-repo-audit/catalog-info.yaml
     - ./skills/gitops/argo-cluster-debug/catalog-info.yaml
-    - ./skills/gitops/argo-operations/catalog-info.yaml
     - ./skills/gitops/argo-performance-tuning/catalog-info.yaml
-    - ./skills/gitops/argo-team-onboard/catalog-info.yaml

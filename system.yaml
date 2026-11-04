@@ -6,8 +6,8 @@ metadata:
   description: >
     Agent skills for Red Hat OpenShift layered products.
     Provides AI-powered GitOps workflows for OpenShift GitOps (Argo CD,
-    Argo Rollouts) including knowledge, auditing, debugging, operations,
-    performance tuning, and team onboarding.
+    Argo Rollouts) including knowledge, repository auditing, cluster
+    debugging, and performance tuning.
   tags:
     - ai-skill
     - agentic

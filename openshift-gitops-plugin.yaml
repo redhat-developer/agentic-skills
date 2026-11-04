@@ -7,7 +7,7 @@ metadata:
   description: >
     Skills for Red Hat OpenShift GitOps (Argo CD + Argo Rollouts) — knowledge
     and manifest generation, repository auditing, live cluster debugging,
-    operations, performance tuning, and GitOps-first team onboarding.
+    and performance tuning.
   labels:
     distribution: external
   tags:
@@ -41,6 +41,4 @@ spec:
     - airesource:ai5-marketplace/argo-knowledge
     - airesource:ai5-marketplace/argo-repo-audit
     - airesource:ai5-marketplace/argo-cluster-debug
-    - airesource:ai5-marketplace/argo-operations
     - airesource:ai5-marketplace/argo-performance-tuning
-    - airesource:ai5-marketplace/argo-team-onboard

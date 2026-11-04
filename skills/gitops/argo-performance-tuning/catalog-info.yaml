@@ -5,7 +5,18 @@ metadata:
   namespace: ai5-marketplace
   title: Argo Performance Tuning
   description: >
-    Diagnoses and tunes OpenShift GitOps / Argo CD performance and scalability — reconciliation reduction, repo-server tuning, controller sharding, and Git rate-limit mitigation.
+    Diagnoses and tunes OpenShift GitOps / Argo CD performance and scalability — reducing
+    unnecessary reconciliation at the source (resource-update ignore rules, resource
+    exclusions, monorepo manifest-cache scoping), repo-server Git and caching behavior,
+    application-controller sharding (static and dynamic) and concurrency, Kubernetes client
+    tuning against managed clusters, self-heal pacing, API-server timeouts, and
+    reconciliation/webhook tuning. Maps symptoms (slow or stuck UI, OOMKilled repo-server,
+    backed-up sync queue, Git provider rate-limiting, sluggish drift detection, "context
+    deadline exceeded" errors, high baseline CPU from status churn or repeated self-heal) to
+    the specific setting that fixes them, for both standalone Argo CD (ConfigMaps + env vars)
+    and the OpenShift GitOps Operator (ArgoCD CR). Use when users report Argo CD or OpenShift
+    GitOps running slowly at scale, hitting OOM, timing out, or ask how to tune, scale, speed
+    up, or reduce resource usage of GitOps reconciliation.
   labels:
     distribution: external
   annotations:
@@ -30,3 +41,4 @@ spec:
   agents: []
   dependsOn:
     - airesource:ai5-marketplace/openshift-gitops
+  dependencyOf: []

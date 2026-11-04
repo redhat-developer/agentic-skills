@@ -50,6 +50,33 @@ for path in $SKILL_PATHS; do
   [ -f "$path/evals/evals.json" ]      || note "$path/evals/evals.json"
   [ -f "benchmarks/$skill.md" ]        || note "benchmarks/$skill.md"
 
+  # Compass catalog-info.yaml: existence, root Location target, description match.
+  # Uses yq (mikefarah/yq, installed by CI) for reliable YAML parsing.
+  manifest="$path/catalog-info.yaml"
+  if [ -f "$manifest" ]; then
+    # Root Location must exist and list this manifest in spec.targets (not elsewhere).
+    if [ ! -f catalog-info.yaml ]; then
+      note "root catalog-info.yaml missing"
+    else
+      if ! yq ".spec.targets[]" catalog-info.yaml 2>/dev/null | grep -qxF "./$manifest"; then
+        note "catalog-info.yaml spec.targets missing ./$manifest"
+      fi
+    fi
+    # Full description comparison: yq extracts the value with proper YAML semantics
+    # (block scalars, quotes, folding). Normalize whitespace for comparison.
+    m_norm=$(yq -r '.metadata.description // ""' "$manifest" 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//')
+    s_norm=$(sed -n '1{/^---$/!q}; 1,/^---$/{/^---$/d; p}' "$path/SKILL.md" | yq -r '.description // ""' 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//')
+    if [ -z "$m_norm" ]; then
+      note "$manifest has missing or empty description"
+    elif [ -z "$s_norm" ]; then
+      note "$path/SKILL.md has missing or empty description"
+    elif [ "$m_norm" != "$s_norm" ]; then
+      note "$manifest description does not match SKILL.md"
+    fi
+  else
+    note "$manifest"
+  fi
+
   grep -q "\"./$path\""                .claude-plugin/marketplace.json || note ".claude-plugin/marketplace.json entry for ./$path"
   grep -q "^  - $skill\$"              agents/claude-code/argocd.md    || note "agents/claude-code/argocd.md skills: list"
   grep -q "^eval-$short:"              Makefile                        || note "Makefile target eval-$short"
