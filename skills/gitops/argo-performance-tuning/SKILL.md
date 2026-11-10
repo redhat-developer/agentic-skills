@@ -77,6 +77,16 @@ belong under its `spec` (`spec.controller.processors`, `spec.repo.env`, …) —
 `argocd-cmd-params-cm`, where the Operator will overwrite them on the next reconcile.
 Confirm with `$KCTL get argocd -A` during Phase 1 before generating any patch.
 
+**Always state both placements, even when you know which install you are on.** Every
+setting in `references/tuning-settings.md` carries a *Standalone location* and an
+*Operator (ArgoCD CR) location*, and they differ — `ARGOCD_REPO_SERVER_PARALLELISM_LIMIT`
+is `spec.repo.env` on the Operator but `argocd-cmd-params-cm` key
+`reposerver.parallelism.limit` (or an env var on the `argocd-repo-server` Deployment)
+standalone; `resource.exclusions` is the dedicated `spec.resourceExclusions` field on the
+Operator but an `argocd-cm` key standalone. Giving only the Operator path is a wrong
+answer for every reader not on the Operator, and it is the most common way this skill's
+output fails review. Read both columns out of the table; do not infer one from the other.
+
 ## Phase 1: Assess
 
 Confirm the cluster context and install type first:
