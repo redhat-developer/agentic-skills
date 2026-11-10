@@ -12,7 +12,7 @@ ROLLOUTS_MANAGER_VERSION := v0.10.0
 IMAGE_UPDATER_VERSION := v1.3.1
 ROLLOUTS_VERSION := v1.8.2
 
-.PHONY: help check-numbers hooks hooks-uninstall scan-secrets history history-check download-schemas clean-schemas test-discover test-validate test-registration test-expectations score score-json score-compare eval eval-knowledge eval-repo-audit eval-cluster-debug eval-operations eval-performance-tuning eval-team-onboard
+.PHONY: help check-numbers baseline with-skill grade hooks hooks-uninstall scan-secrets history history-check download-schemas clean-schemas test-discover test-validate test-registration test-expectations score score-json score-compare eval eval-knowledge eval-repo-audit eval-cluster-debug eval-operations eval-performance-tuning eval-team-onboard
 
 # Fetch a CRD schema from an arbitrary URL, selecting the STORAGE version rather than
 # versions[0] — the ArgoCD CR serves both v1alpha1 and v1beta1 and we want v1beta1.
@@ -114,6 +114,34 @@ test-validate: ## Run validation script on test fixtures
 	$(VALIDATE_SCRIPT) -d $(TEST_DIR)/applicationset
 
 eval: eval-knowledge eval-repo-audit eval-cluster-debug eval-performance-tuning ## Run all skill evals
+
+# --- two-arm benchmarking (scripts/run_eval_arm.py + scripts/grade_eval.py) -------
+# The eval-* targets above run the with-skill arm only and self-score; they are a
+# smoke test, not a benchmark. A published number needs both arms and a blind grader.
+#
+#   make baseline SKILL=argo-knowledge RUN=2026-11-10
+#   make with-skill SKILL=argo-knowledge RUN=2026-11-10
+#   make grade SKILL=argo-knowledge RUN=2026-11-10 LABEL="2026-11-10 run 9"
+#   make check-numbers        # already defined above
+#
+# Add CLUSTER=1 for skills that need read-only oc access (cluster-debug,
+# performance-tuning). ONLY=17,18 re-runs a subset.
+
+RUN ?= $(shell date +%F)
+MODEL ?= claude-opus-5
+
+baseline: ## Generate the baseline arm (SKILL=, RUN=, [CLUSTER=1], [ONLY=])
+	@python3 scripts/run_eval_arm.py --skill $(SKILL) --condition baseline \
+		--run-id $(RUN) --model $(MODEL) $(if $(CLUSTER),--cluster,) $(if $(ONLY),--only $(ONLY),)
+
+with-skill: ## Generate the with-skill arm (SKILL=, RUN=, [CLUSTER=1], [ONLY=])
+	@python3 scripts/run_eval_arm.py --skill $(SKILL) --condition with-skill \
+		--run-id $(RUN) --model $(MODEL) $(if $(CLUSTER),--cluster,) $(if $(ONLY),--only $(ONLY),)
+
+grade: ## Blind-grade both arms into benchmarks/results/ (SKILL=, RUN=, LABEL=)
+	@python3 scripts/grade_eval.py --skill $(SKILL) --run-id $(RUN) --model $(MODEL) \
+		--run-label "$(LABEL)"
+
 
 eval-knowledge: ## Run argo-knowledge evals
 	@echo "Running argo-knowledge evals..."
