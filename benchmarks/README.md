@@ -16,8 +16,8 @@ without.** 1,174 verdicts, each carrying an evidence string, in [`results/`](res
 | `argo-performance-tuning` | **96.7%** | 64.0% | **+32.7** | [↗](argo-performance-tuning.md) |
 | `argo-repo-audit` | **95.3%** | 79.4% | **+15.9** | [↗](argo-repo-audit.md) |
 | `argo-cluster-debug` | — | — | — | **withdrawn** — scope changed, [↗](argo-cluster-debug.md) |
-| `argo-knowledge` | 98.5% | 93.9% | +4.5 | [↗](argo-knowledge.md) |
-| **Weighted overall** | **97.1%** | **80.2%** | **+16.9** | **3 of 4 skills, n=324** — excludes `argo-cluster-debug` |
+| `argo-knowledge` | — | — | — | **withdrawn** — scope changed, [↗](argo-knowledge.md) |
+| **Weighted overall** | **96.1%** | **70.8%** | **+25.3** | **2 of 4 skills, n=192** — excludes `argo-cluster-debug` and `argo-knowledge` |
 
 **What run 7 actually re-measured.** Only `argo-cluster-debug` was re-run end to end
 (new fixtures for evals 2, 4 and 6), and only `argo-performance-tuning` was re-graded
@@ -51,7 +51,7 @@ answer text, same expectations — so any difference is the grader, not the skil
 |---|--:|--:|--:|
 | `argo-knowledge` | 131 | 98% | −0.8 |
 | `argo-performance-tuning` | 101 | 92% | −2.0 |
-| `argo-cluster-debug` | — | — | — | **withdrawn** — scope changed, [↗](argo-cluster-debug.md) |
+| `argo-cluster-debug` | 57 | 88% | +0.9 |
 | `argo-repo-audit` | 80 | 86% | **−6.9** |
 | **pooled** | **369** | **92%** | — |
 
@@ -258,8 +258,9 @@ unrelated to grading.
 
 | Directory | What it holds |
 |---|---|
-| [`results/`](results/) | Current verdicts (run 6, 2026-10-23; `argo-knowledge` carries its unchanged run-2 grading) |
+| [`results/`](results/) | Current verdicts for the two skills whose scope did not change (run 6/7) |
 | [`results-run1-2026-10-20/`](results-run1-2026-10-20/) | Run-1,174 verdicts — makes the grader-drift table reproducible |
+| [`results-archive/`](results-archive/) | Verdicts for removed or scope-changed skills — historical, not current |
 | [`results-run2-fixturecapped/`](results-run2-fixturecapped/) | `argo-cluster-debug` run 2, before fixtures were deployed |
 
 Cluster-dependent suites need a real cluster — run them locally with `make eval-*`; CI

@@ -1,0 +1,98 @@
+{
+ "3": {
+  "A": "claude-opus-5|baseline",
+  "B": "claude-opus-5|with-skill",
+  "C": "claude-opus-4-6|baseline",
+  "D": "claude-opus-4-6|with-skill"
+ },
+ "5": {
+  "A": "claude-opus-5|baseline",
+  "B": "claude-opus-4-6|with-skill",
+  "C": "claude-opus-5|with-skill",
+  "D": "claude-opus-4-6|baseline"
+ },
+ "7": {
+  "A": "claude-opus-4-6|with-skill",
+  "B": "claude-opus-5|with-skill",
+  "C": "claude-opus-5|baseline",
+  "D": "claude-opus-4-6|baseline"
+ },
+ "9": {
+  "A": "claude-opus-4-6|baseline",
+  "B": "claude-opus-5|baseline",
+  "C": "claude-opus-4-6|with-skill",
+  "D": "claude-opus-5|with-skill"
+ },
+ "12": {
+  "A": "claude-opus-5|with-skill",
+  "B": "claude-opus-4-6|baseline",
+  "C": "claude-opus-4-6|with-skill",
+  "D": "claude-opus-5|baseline"
+ },
+ "15": {
+  "A": "claude-opus-4-6|with-skill",
+  "B": "claude-opus-5|baseline",
+  "C": "claude-opus-4-6|baseline",
+  "D": "claude-opus-5|with-skill"
+ },
+ "1": {
+  "A": "claude-opus-4-6|baseline",
+  "B": "claude-opus-5|with-skill",
+  "C": "claude-opus-4-6|with-skill",
+  "D": "claude-opus-5|baseline"
+ },
+ "2": {
+  "A": "claude-opus-4-6|with-skill",
+  "B": "claude-opus-5|with-skill",
+  "C": "claude-opus-4-6|baseline",
+  "D": "claude-opus-5|baseline"
+ },
+ "4": {
+  "A": "claude-opus-5|baseline",
+  "B": "claude-opus-4-6|baseline",
+  "C": "claude-opus-4-6|with-skill",
+  "D": "claude-opus-5|with-skill"
+ },
+ "6": {
+  "A": "claude-opus-5|with-skill",
+  "B": "claude-opus-5|baseline",
+  "C": "claude-opus-4-6|baseline",
+  "D": "claude-opus-4-6|with-skill"
+ },
+ "8": {
+  "A": "claude-opus-4-6|with-skill",
+  "B": "claude-opus-5|baseline",
+  "C": "claude-opus-5|with-skill",
+  "D": "claude-opus-4-6|baseline"
+ },
+ "10": {
+  "A": "claude-opus-4-6|baseline",
+  "B": "claude-opus-5|with-skill",
+  "C": "claude-opus-5|baseline",
+  "D": "claude-opus-4-6|with-skill"
+ },
+ "11": {
+  "A": "claude-opus-5|with-skill",
+  "B": "claude-opus-5|baseline",
+  "C": "claude-opus-4-6|with-skill",
+  "D": "claude-opus-4-6|baseline"
+ },
+ "13": {
+  "A": "claude-opus-4-6|baseline",
+  "B": "claude-opus-5|with-skill",
+  "C": "claude-opus-5|baseline",
+  "D": "claude-opus-4-6|with-skill"
+ },
+ "14": {
+  "A": "claude-opus-5|with-skill",
+  "B": "claude-opus-4-6|with-skill",
+  "C": "claude-opus-5|baseline",
+  "D": "claude-opus-4-6|baseline"
+ },
+ "16": {
+  "A": "claude-opus-5|baseline",
+  "B": "claude-opus-4-6|with-skill",
+  "C": "claude-opus-4-6|baseline",
+  "D": "claude-opus-5|with-skill"
+ }
+}

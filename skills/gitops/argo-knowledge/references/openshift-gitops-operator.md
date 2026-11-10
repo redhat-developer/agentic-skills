@@ -406,3 +406,35 @@ kubectl get applications.argoproj.io <app> -n "$NS" \
 An empty `ComparisonError` after a hard refresh is the evidence that the credential
 works. Never echo token values into logs or transcripts while checking — the `url` and
 `connection-status` fields answer the question without exposing the secret.
+
+## Resource tracking — and why things show OutOfSync that nobody changed
+
+If Argo CD shares a cluster with Helm, a legacy deployment tool, or anything else that
+writes `app.kubernetes.io/instance`, Applications will report resources as `OutOfSync`
+with no change behind it. That label is the **old** tracking method and it collides.
+
+| `resource.trackingMethod` | Use when |
+|---|---|
+| `annotation` (modern default) | Almost always. Uses `argocd.argoproj.io/tracking-id`, which nothing else writes, so no collision. |
+| `label` | Only if you must select Argo-managed resources with a label selector. Collides with other tools. |
+| `annotation+label` | Migrating from `label` to `annotation` and something still needs the label. |
+
+Upstream this is an `argocd-cm` key:
+
+```yaml
+data:
+  resource.trackingMethod: annotation
+```
+
+**On OpenShift GitOps, do not edit `argocd-cm` directly** — the operator owns it and will
+revert you. Set it through the `ArgoCD` CR instead, the same rule as everything else on
+this page.
+
+Two follow-ons that matter when diagnosing phantom drift:
+
+- **Use `ignoreDifferences` for fields another controller owns** — HPA-managed
+  `spec.replicas` is the classic case. The other controller is not wrong; you are
+  diffing against a field you do not own.
+- **Do not reach for disabling `selfHeal` as the fix.** That suppresses the symptom and
+  gives up drift correction everywhere else. Fix the tracking method or scope the
+  `ignoreDifferences`; `selfHeal` is not the problem.

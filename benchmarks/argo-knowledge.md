@@ -1,5 +1,13 @@
 # argo-knowledge
 
+> **WITHDRAWN — do not quote these numbers.** This page measures the skill when it
+> carried 14 reference files and 5,347 lines. A cross-model probe (see
+> `cross-model-probe.md`) found four of those files tied or lost against an unaided
+> baseline on both claude-opus-4-6 and claude-opus-5; they were cut, taking the skill
+> to 10 references and 3,625 lines. The run-2 verdicts are archived under
+> `results-archive/` and this skill is unmeasured until a fresh blind A/B run.
+
+
 ## Run 2 — 2026-10-21, live cluster, blind A/B
 
 **98.5% with the skill vs 93.9% baseline (+4.5) over 132 expectations.**
@@ -16,8 +24,8 @@
 Measured against a live OpenShift cluster (OpenShift GitOps 1.21.3, Argo CD v3.4.5).
 Graders saw "Condition A"/"Condition B" without knowing which was which and could not
 read `skills/`. Partial credit; every verdict carries an evidence string. Raw verdicts:
-[`results/argo-knowledge.with-skill.results.json`](results/argo-knowledge.with-skill.results.json) and
-[`results/argo-knowledge.baseline.results.json`](results/argo-knowledge.baseline.results.json).
+[`results-archive/argo-knowledge.with-skill.results.json`](results-archive/argo-knowledge.with-skill.results.json) and
+[`results-archive/argo-knowledge.baseline.results.json`](results-archive/argo-knowledge.baseline.results.json).
 
 | # | Eval | n | with-skill | baseline | delta |
 |---|------|--:|-----------:|---------:|------:|

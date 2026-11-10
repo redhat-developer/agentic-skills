@@ -196,14 +196,10 @@ Generate an ArgoCD CR for the OpenShift GitOps operator with OAuth and Routes.
 | Application spec, sync policies, health checks, multi-cluster | `applications.md` |
 | ApplicationSet generators, progressive syncs, templates | `applicationsets.md` |
 | AppProject RBAC, source/destination restrictions, sync windows | `app-projects.md` |
-| Rollout canary/blue-green, traffic management, AnalysisTemplate | `rollouts.md` |
-| Notification services, templates, triggers, subscriptions | `notifications.md` |
 | Image updater annotations, strategies, write-back | `image-updater.md` |
 | Repository patterns (app-of-apps, ApplicationSet, monorepo) | `repo-patterns.md` |
-| Best practices (sync, RBAC, health, secrets) | `best-practices.md` |
 | argocd-agent hub-and-spoke architecture | `agent-mode.md` |
 | Multi-tenancy, apps-in-any-namespace, Autopilot | `multi-tenancy.md` |
-| OpenShift GitOps Operator, ArgoCD CRD, Routes, SCCs, OAuth | `openshift.md` |
 | **Operator-only CRDs** — RolloutManager, NotificationsConfiguration, NamespaceManagement, ImageUpdater, GitopsService | `openshift-gitops-operator.md` |
 | GitOps Promoter, PromotionStrategy, branch-per-env promotion, commit status gating | `gitops-promoter.md` |
 
@@ -358,8 +354,8 @@ the answer is unflattering.
 | [`argo-performance-tuning`](benchmarks/argo-performance-tuning.md) | **96.7%** | 64.0% | **+32.7** | scope unchanged |
 | [`argo-repo-audit`](benchmarks/argo-repo-audit.md) | **95.3%** | 79.4% | **+15.9** | scope unchanged |
 | [`argo-cluster-debug`](benchmarks/argo-cluster-debug.md) | — | — | — | **withdrawn** — gained 19 expectations, must re-measure |
-| [`argo-knowledge`](benchmarks/argo-knowledge.md) | 98.5% | 93.9% | +4.5 | *unresolved*; narrowing pending |
-| **Weighted overall** | **97.1%** | **80.2%** | **+16.9** | **3 of 4 skills, n=324** — excludes `argo-cluster-debug` |
+| [`argo-knowledge`](benchmarks/argo-knowledge.md) | — | — | — | **withdrawn** — 4 references cut, scope changed |
+| **Weighted overall** | **96.1%** | **70.8%** | **+25.3** | **2 of 4 skills, n=192** — excludes `argo-cluster-debug` and `argo-knowledge` |
 
 **The delta tracks how product-specific a skill is.** Performance tuning — exact setting
 names, defaults the operator silently overrides, which CR field actually wins — gains
