@@ -1,18 +1,23 @@
 # Benchmarks — methodology and caveats
 
+> **Mid-migration.** `argo-operations` and `argo-team-onboard` were removed; their
+> pages are archived as `archive-*.md`. `argo-cluster-debug` absorbed Argo Rollouts
+> runtime control (+19 expectations) so its published verdict no longer applies and is
+> withdrawn rather than carried forward. `argo-knowledge` is pending a narrowing.
+> `argo-performance-tuning` and `argo-repo-audit` are unchanged in scope and their
+> run-7 numbers stand. No weighted overall until every row is re-measured.
+
 Measured 2026-10-23 (run 7) against a live OpenShift cluster (OpenShift GitOps 1.21.3, Argo CD
-v3.4.5). **587 expectations per condition, graded twice — once with the skills, once
+v3.4.5). **324 expectations per condition across the three unchanged skills, graded twice — once with the skills, once
 without.** 1,174 verdicts, each carrying an evidence string, in [`results/`](results/).
 
 | Skill | with-skill | baseline | delta | per-eval detail |
 |-------|-----------:|---------:|------:|---|
 | `argo-performance-tuning` | **96.7%** | 64.0% | **+32.7** | [↗](argo-performance-tuning.md) |
 | `argo-repo-audit` | **95.3%** | 79.4% | **+15.9** | [↗](argo-repo-audit.md) |
-| `argo-operations` | **96.4%** | 81.6% | **+14.8** | [↗](argo-operations.md) |
-| `argo-cluster-debug` | **99.2%** | 89.3% | **+9.8** | [↗](argo-cluster-debug.md) |
-| `argo-team-onboard` | 89.4% | 84.6% | +4.8 | [↗](argo-team-onboard.md) |
+| `argo-cluster-debug` | — | — | — | **withdrawn** — scope changed, [↗](argo-cluster-debug.md) |
 | `argo-knowledge` | 98.5% | 93.9% | +4.5 | [↗](argo-knowledge.md) |
-| **Weighted overall** | **95.8%** | **82.2%** | **+13.6** | |
+| **Weighted overall** | **97.1%** | **80.2%** | **+16.9** | **3 of 4 skills, n=324** — excludes `argo-cluster-debug` |
 
 **What run 7 actually re-measured.** Only `argo-cluster-debug` was re-run end to end
 (new fixtures for evals 2, 4 and 6), and only `argo-performance-tuning` was re-graded
@@ -46,7 +51,7 @@ answer text, same expectations — so any difference is the grader, not the skil
 |---|--:|--:|--:|
 | `argo-knowledge` | 131 | 98% | −0.8 |
 | `argo-performance-tuning` | 101 | 92% | −2.0 |
-| `argo-cluster-debug` | 57 | 88% | +0.9 |
+| `argo-cluster-debug` | — | — | — | **withdrawn** — scope changed, [↗](argo-cluster-debug.md) |
 | `argo-repo-audit` | 80 | 86% | **−6.9** |
 | **pooled** | **369** | **92%** | — |
 

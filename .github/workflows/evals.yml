@@ -12,9 +12,7 @@ on:
           - argo-knowledge
           - argo-repo-audit
           - argo-cluster-debug
-          - argo-operations
           - argo-performance-tuning
-          - argo-team-onboard
       model:
         description: 'Model to use'
         required: true
@@ -40,11 +38,7 @@ jobs:
             needs_cluster: false
           - skill: argo-cluster-debug
             needs_cluster: true
-          - skill: argo-operations
-            needs_cluster: true
           - skill: argo-performance-tuning
-            needs_cluster: true
-          - skill: argo-team-onboard
             needs_cluster: true
     steps:
       - name: Filter by input

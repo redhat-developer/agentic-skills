@@ -113,7 +113,7 @@ test-validate: ## Run validation script on test fixtures
 	$(VALIDATE_SCRIPT) -d $(TEST_DIR)/app-of-apps
 	$(VALIDATE_SCRIPT) -d $(TEST_DIR)/applicationset
 
-eval: eval-knowledge eval-repo-audit eval-cluster-debug eval-operations eval-performance-tuning eval-team-onboard ## Run all skill evals
+eval: eval-knowledge eval-repo-audit eval-cluster-debug eval-performance-tuning ## Run all skill evals
 
 eval-knowledge: ## Run argo-knowledge evals
 	@echo "Running argo-knowledge evals..."
@@ -139,27 +139,11 @@ eval-cluster-debug: ## Run argo-cluster-debug evals (requires live cluster)
 		2. Score the output against the expectations array. \
 		Report a scorecard table: eval id, passed/total, and list any failed expectations."
 
-eval-operations: ## Run argo-operations evals (requires live cluster)
-	@echo "Running argo-operations evals (requires kubectl access)..."
-	@claude --print --dangerously-skip-permissions \
-		"Read skills/gitops/argo-operations/evals/evals.json. For each eval: \
-		1. Spawn a sub-agent that reads skills/gitops/argo-operations/SKILL.md first, then follows the generate/preview/confirm workflow. \
-		2. Score the output against the expectations array. \
-		Report a scorecard table: eval id, passed/total, and list any failed expectations."
-
 eval-performance-tuning: ## Run argo-performance-tuning evals (requires live cluster)
 	@echo "Running argo-performance-tuning evals (requires kubectl access)..."
 	@claude --print --dangerously-skip-permissions \
 		"Read skills/gitops/argo-performance-tuning/evals/evals.json. For each eval: \
 		1. Spawn a sub-agent that reads skills/gitops/argo-performance-tuning/SKILL.md first, then follows the assess/diagnose/tune workflow. \
-		2. Score the output against the expectations array. \
-		Report a scorecard table: eval id, passed/total, and list any failed expectations."
-
-eval-team-onboard: ## Run argo-team-onboard evals (requires live cluster)
-	@echo "Running argo-team-onboard evals (requires kubectl access)..."
-	@claude --print --dangerously-skip-permissions \
-		"Read skills/gitops/argo-team-onboard/evals/evals.json. For each eval: \
-		1. Spawn a sub-agent that reads skills/gitops/argo-team-onboard/SKILL.md first, then follows the discovery-first onboarding workflow. \
 		2. Score the output against the expectations array. \
 		Report a scorecard table: eval id, passed/total, and list any failed expectations."
 

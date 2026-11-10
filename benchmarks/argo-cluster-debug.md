@@ -1,5 +1,14 @@
 # argo-cluster-debug
 
+> **WITHDRAWN — do not quote these numbers.** This page measures the 9-eval,
+> 61-expectation suite as it stood at run 7. `argo-cluster-debug` has since absorbed
+> Argo Rollouts runtime control (promote / abort / retry) and destructive-delete safety
+> from the removed `argo-operations` skill, taking it to 12 evals and 80 expectations.
+> A verdict measured against a different suite does not transfer, so the run-7 verdict
+> files are archived under `results-archive/` and this skill is unmeasured until a
+> fresh blind A/B run is done.
+
+
 ## Run 8 — 2026-10-23
 
 **99.2% with the skill vs 89.3% baseline (+9.8) over 61 expectations.**
