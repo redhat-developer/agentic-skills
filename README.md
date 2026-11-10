@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/OpenShift-layered%20products-EE0000.svg" alt="OpenShift">
   <img src="https://img.shields.io/badge/products-1%20shipping%20%7C%203%20open-8A63D2.svg" alt="1 product shipping, 3 open">
   <img src="https://img.shields.io/badge/skills-4-8A63D2.svg" alt="4 skills">
-  <img src="https://img.shields.io/badge/evals-61-3FB950.svg" alt="61 evals">
+  <img src="https://img.shields.io/badge/evals-64-3FB950.svg" alt="64 evals">
 </p>
 
 <p align="center">
