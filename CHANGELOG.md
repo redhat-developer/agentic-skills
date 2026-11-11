@@ -4,6 +4,76 @@ All notable changes to this project will be documented in this file.
 
 ## [Unreleased]
 
+### Changed — the Argo skill set is reorganised around one principle
+
+**Read the world, recommend the change, let Git carry it.** What remains either analyses
+something, or acts on runtime state no controller owns. Six skills become four.
+
+- **Removed `argo-team-onboard`** (104 expectations retire). Its whole output was desired
+  state that belongs in a commit, and it sat below the portfolio average at +4.8.
+- **Dissolved `argo-operations`.** On OpenShift the GitOps Operator owns installing,
+  configuring and upgrading Argo CD — its eval for exactly that scored **+0 over 10
+  expectations**, because the operator does the work. Authoring Applications and
+  ApplicationSets belongs in Git. Credential rotation belongs in a secrets manager.
+- **Preserved from it:** Rollout runtime control (promote/abort/retry) moved to
+  `argo-cluster-debug`, since a Rollout paused awaiting promotion is runtime state Git
+  cannot express. Destructive-delete safety moved into the shared protocol. Repository
+  credential knowledge became documentation in `argo-knowledge`.
+- **New `skills/gitops/write-safety.md`** — Generate → Preview → Blast radius → Confirm →
+  Verify, plus the typed-resource-name rule, shared by the two write-capable skills.
+  `argo-performance-tuning` previously referenced `argo-operations` by name for its write
+  protocol; that dangling dependency was the one hard blocker in the change.
+- **Narrowed `argo-knowledge` by 1,754 lines** (31%) on cross-model evidence — see below.
+- **Added AppProject evals** (21 expectations). `app-projects.md` carried 308 lines no eval
+  touched. **Fixed `argocd-app-health` → `argocd-health`** in three places; verified
+  against `argoproj-labs/gitops-promoter` `constants.go`. Two evals had been grading *for*
+  the broken value, so the suite rewarded a PromotionStrategy that would hang.
+
+### Added — benchmark tooling, because the old process was lost
+
+Runs 1-8 were produced by hand and nothing in the repo could reproduce them. When scope
+changed, four skills had no way to be re-measured and their verdicts had to be withdrawn.
+
+`scripts/run_eval_arm.py` and `scripts/grade_eval.py`, wired to `make baseline` /
+`make with-skill` / `make grade`. Strong baseline with the same framing and tools as the
+with-skill arm; isolation by construction (baseline runs from an empty directory); one
+blind grader per comparison; a verbatim evidence quote behind every verdict; read-only
+cluster access by allowlist rather than `--dangerously-skip-permissions`. The existing
+`eval-*` targets remain, relabelled as what they are — a single-arm self-scored smoke
+test, not a benchmark.
+
+### Benchmarks — run 9, a clean break from runs 1-8
+
+| skill                   |   n | with-skill | baseline |  delta |
+|-------------------------|----:|-----------:|---------:|-------:|
+| argo-performance-tuning | 107 |      94.9% |    57.9% | +36.9  |
+| argo-repo-audit         |  85 |      96.5% |    68.8% | +27.6  |
+| argo-cluster-debug      |  80 |      95.0% |    78.8% | +16.2  |
+| argo-knowledge          | 153 |      95.4% |    86.9% |  +8.5  |
+| **weighted overall**    | 425 |      95.4% |    74.5% | +20.9  |
+
+Rank order is identical to runs 1-8, which is the evidence the harness measures the same
+thing. Deltas run wider because the new grader is stricter and the with-skill arms sit
+near ceiling, so only baselines have room to fall. **Do not compare run 9 to runs 1-8** —
+the instrument changed.
+
+### Added — first cross-model measurement
+
+All nine prior runs used one model, so nothing tested whether a skill's value decays as
+the base model improves — the premise the narrowing rests on. 16 evals x
+{claude-opus-4-6, claude-opus-5} x {with-skill, baseline}:
+
+    claude-opus-4-6   69.7% -> 94.3%   +24.6
+    claude-opus-5     84.5% -> 96.2%   +11.7
+
+The skill is worth more than twice as much on the older model. Baselines rose 69.7 -> 84.5
+between generations while the with-skill ceiling barely moved. Four references tied or
+lost on **both** models and were cut: `rollouts.md`, `openshift.md`, `notifications.md`,
+`best-practices.md`. `agent-mode.md` was kept despite +0 on opus-5 — it is +40 on 4.6, and
+this repo ships to agents that may run weaker models. Full method in
+`benchmarks/cross-model-probe.md`.
+
+
 ### Benchmarks — run 2: re-measured all six skills, and measured the grader
 
 Re-ran every suite against a live OpenShift cluster after fixing the defects run 1

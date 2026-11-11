@@ -215,6 +215,24 @@ A score on its own is meaningless. Every skill is measured twice on the same pro
 Then graded **blind**: the grader sees "Condition A" and "Condition B" and is not told
 which is which.
 
+**How to actually run it:**
+
+```bash
+make baseline   SKILL=<your-skill> RUN=$(date +%F)   # add CLUSTER=1 if it needs one
+make with-skill SKILL=<your-skill> RUN=$(date +%F)
+make grade      SKILL=<your-skill> RUN=$(date +%F) LABEL="2026-11-10 run N"
+make check-numbers
+```
+
+`make grade` writes `benchmarks/results/<skill>.{with-skill,baseline}.results.json`, and
+`make check-numbers` then fails until every published table matches those verdicts. Add
+`--require-state` (see `scripts/run_eval_arm.py --help`) for cluster fixtures, and run
+cluster-dependent arms **sequentially** — run in parallel they can perturb each other's
+view of the cluster, which silently invalidates the comparison rather than failing it.
+
+Note the `make eval-*` targets are a different thing: with-skill only, self-scored. They
+are a smoke test, not a benchmark.
+
 **Make the baseline strong.** A hobbled baseline produces a flattering number that tells
 you nothing. Several of ours beat the skill on specific items, and that is how we learned
 what to fix.

@@ -491,14 +491,18 @@ make test-validate        # YAML syntax, schema validation, kustomize builds
 make test-registration    # every skill registered in manifests, agent, banner, README, CI
 make test-expectations    # eval expectations' field paths resolve against the CRD schemas
 
-# Evals
-make eval                 # all six skills
+# Smoke test — with-skill arm only, self-scored. Not a benchmark.
+make eval                 # all four skills
 make eval-knowledge              # no cluster needed
 make eval-repo-audit             # no cluster needed
 make eval-cluster-debug          # needs a live cluster
-make eval-operations             # needs a live cluster
 make eval-performance-tuning     # needs a live cluster
-make eval-team-onboard           # needs a live cluster
+
+# Benchmark — two arms, blind grader, writes benchmarks/results/
+make baseline   SKILL=argo-knowledge RUN=$(date +%F)
+make with-skill SKILL=argo-knowledge RUN=$(date +%F)
+make grade      SKILL=argo-knowledge RUN=$(date +%F) LABEL="run 10"
+make check-numbers        # fails if a published table drifts from the verdicts
 ```
 
 Two guards worth knowing about, because they catch the mistakes that actually happened here:
