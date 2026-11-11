@@ -11,7 +11,7 @@
   "plugins": [
     {
       "name": "openshift-gitops",
-      "description": "Skills for Red Hat OpenShift GitOps (Argo CD + Argo Rollouts) — knowledge and manifest generation, repository auditing, live cluster debugging, operations, performance tuning, and GitOps-first team onboarding",
+      "description": "Skills for Red Hat OpenShift GitOps (Argo CD + Argo Rollouts) — knowledge and manifest generation, repository auditing, live cluster debugging, and performance tuning",
       "source": "./",
       "strict": false,
       "skills": [

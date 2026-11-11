@@ -4,7 +4,7 @@ about: Suggest a new skill, reference doc, or capability
 labels: enhancement
 ---
 
-**What skill does this relate to?** (argo-knowledge / argo-repo-audit / argo-cluster-debug / new skill)
+**What skill does this relate to?** (argo-knowledge / argo-repo-audit / argo-cluster-debug / argo-performance-tuning / new skill)
 
 **What should the agent be able to do?**
 <!-- Describe the capability you want -->

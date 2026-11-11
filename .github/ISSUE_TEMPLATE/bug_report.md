@@ -4,7 +4,7 @@ about: Report inaccurate YAML generation, missed audit findings, or incorrect de
 labels: bug
 ---
 
-**Skill:** (argo-knowledge / argo-repo-audit / argo-cluster-debug)
+**Skill:** (argo-knowledge / argo-repo-audit / argo-cluster-debug / argo-performance-tuning)
 
 **Agent platform:** (Claude Code / GitHub Copilot / Codex)
 
