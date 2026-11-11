@@ -7,7 +7,7 @@
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
   <img src="https://img.shields.io/badge/OpenShift-layered%20products-EE0000.svg" alt="OpenShift">
   <img src="https://img.shields.io/badge/products-1%20shipping%20%7C%203%20open-8A63D2.svg" alt="1 product shipping, 3 open">
-  <img src="https://img.shields.io/badge/skills-6-8A63D2.svg" alt="6 skills">
+  <img src="https://img.shields.io/badge/skills-9-8A63D2.svg" alt="9 skills">
   <img src="https://img.shields.io/badge/evals-114-3FB950.svg" alt="114 evals">
 </p>
 
@@ -502,7 +502,7 @@ no measured baseline is a guess, and this repo does not publish guesses — incl
 the answer is unflattering.
 
 <details open>
-<summary><b>🔵 GitOps</b> — 9 skills, 6 measured over 587 expectations per condition</summary>
+<summary><b>🔵 GitOps</b> — 6 skills, 587 expectations per condition</summary>
 
 | Skill | with-skill | baseline | delta | |
 |-------|-----------:|---------:|------:|---|
@@ -513,16 +513,6 @@ the answer is unflattering.
 | [`argo-team-onboard`](benchmarks/argo-team-onboard.md) | 89.4% | 84.6% | +4.8 | *unresolved* |
 | [`argo-knowledge`](benchmarks/argo-knowledge.md) | 98.5% | 93.9% | +4.5 | *unresolved* |
 | **Weighted overall** | **95.8%** | **82.2%** | **+13.6** | |
-
-Three skills ship with eval suites but **no baseline run**, so they are absent from the
-table above rather than listed with a blank delta. By this repo's own bar they are
-unproven until measured:
-
-| Skill | evals | status |
-|-------|------:|--------|
-| [`argo-operator`](benchmarks/argo-operator.md) | 11 | not yet measured |
-| [`argo-app-sync-triage`](benchmarks/argo-app-sync-triage.md) | 9 | not yet measured |
-| [`argo-app-health-triage`](benchmarks/argo-app-health-triage.md) | 8 | not yet measured |
 
 **The delta tracks how product-specific a skill is.** Performance tuning — exact setting
 names, defaults the operator silently overrides, which CR field actually wins — gains
