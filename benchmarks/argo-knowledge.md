@@ -1,12 +1,42 @@
 # argo-knowledge
 
-> **WITHDRAWN — do not quote these numbers.** This page measures the skill when it
-> carried 14 reference files and 5,347 lines. A cross-model probe (see
-> `cross-model-probe.md`) found four of those files tied or lost against an unaided
-> baseline on both claude-opus-4-6 and claude-opus-5; they were cut, taking the skill
-> to 10 references and 3,625 lines. The run-2 verdicts are archived under
-> `results-archive/` and this skill is unmeasured until a fresh blind A/B run.
+## Run 9 — 2026-11-10, new two-arm harness
 
+**95.4% with the skill vs 86.9% baseline (+8.5) over 153 expectations.**
+
+> Generated with `make baseline` / `make with-skill` / `make grade` — see
+> [methodology](README.md#how-to-produce-a-run). One blind grader scored both arms
+> of each eval in a single call, every verdict carries a verbatim evidence quote,
+> and the baseline ran from an empty directory so `skills/` was unreachable.
+> **Not comparable to runs 1-8** — different harness, stricter grader.
+
+| # | Eval | n | with-skill | baseline | delta |
+|---|------|--:|-----------:|---------:|------:|
+| 1 | eval-1 | 12 | 96% | 96% | +0 |
+| 2 | eval-2 | 10 | 95% | 95% | +0 |
+| 3 | eval-3 | 10 | 100% | 100% | +0 |
+| 4 | eval-4 | 10 | 95% | 100% | -5 |
+| 5 | eval-5 | 12 | 100% | 100% | +0 |
+| 6 | eval-6 | 12 | 100% | 92% | +8 |
+| 7 | eval-7 | 10 | 100% | 80% | +20 |
+| 8 | eval-8 | 12 | 96% | 79% | +17 |
+| 9 | Notifications on OpenShift GitOps | 6 | 100% | 50% | +50 |
+| 10 | Deploy Argo Rollouts on OpenShift GitOps | 5 | 100% | 80% | +20 |
+| 11 | Attach a tenant namespace to a central Argo CD | 5 | 90% | 70% | +20 |
+| 12 | Why do ArgoCD CR edits revert on the default instance | 5 | 100% | 90% | +10 |
+| 13 | Image Updater via the operator CRD | 7 | 100% | 29% | +71 |
+| 14 | Resource tracking method and sync policy for a shared cluster | 5 | 90% | 80% | +10 |
+| 15 | Secret management choice for a GitOps repo | 5 | 70% | 100% | -30 |
+| 16 | Choose a GitOps repository pattern | 6 | 75% | 75% | +0 |
+| 17 | AppProject sync windows — allow/deny interaction and manualSync | 7 | 100% | 100% | +0 |
+| 18 | AppProject resource allow/deny lists and sourceNamespaces scoping | 7 | 100% | 100% | +0 |
+| 19 | AppProject role scoping and orphaned resource monitoring | 7 | 86% | 100% | -14 |
+| | **total** | **153** | **95.4%** | **86.9%** | **+8.5** |
+
+---
+
+<details>
+<summary>Superseded: runs 1-8 (different harness)</summary>
 
 ## Run 2 — 2026-10-21, live cluster, blind A/B
 
@@ -170,5 +200,7 @@ perfectly controlled apples-to-apples diff.
 - **Sonnet with skill matches or beats Opus baseline** on newer features — the skill
   effectively upgrades Sonnet to Opus-level accuracy for Argo-specific tasks.
 
+
+</details>
 
 </details>

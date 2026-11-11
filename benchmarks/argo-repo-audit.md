@@ -1,5 +1,36 @@
 # argo-repo-audit
 
+## Run 9 — 2026-11-10, new two-arm harness
+
+**96.5% with the skill vs 68.8% baseline (+27.6) over 85 expectations.**
+
+> Generated with `make baseline` / `make with-skill` / `make grade` — see
+> [methodology](README.md#how-to-produce-a-run). One blind grader scored both arms
+> of each eval in a single call, every verdict carries a verbatim evidence quote,
+> and the baseline ran from an empty directory so `skills/` was unreachable.
+> **Not comparable to runs 1-8** — different harness, stricter grader.
+
+| # | Eval | n | with-skill | baseline | delta |
+|---|------|--:|-----------:|---------:|------:|
+| 1 | app-of-apps-audit | 13 | 100% | 58% | +42 |
+| 2 | applicationset-audit | 11 | 100% | 91% | +9 |
+| 3 | mixed-issues-audit | 13 | 100% | 77% | +23 |
+| 4 | validate-only | 6 | 100% | 100% | +0 |
+| 5 | detect-wildcard-project | 5 | 100% | 60% | +40 |
+| 6 | detect-plain-secret | 5 | 100% | 40% | +60 |
+| 7 | detect-no-sync-policy | 4 | 100% | 62% | +38 |
+| 8 | detect-head-in-prod | 4 | 100% | 100% | +0 |
+| 9 | detect-weak-analysis | 4 | 75% | 25% | +50 |
+| 10 | detect-hardcoded-helm-password | 5 | 60% | 60% | +0 |
+| 11 | clean-repo-zero-findings | 9 | 100% | 50% | +50 |
+| 12 | Subtle RBAC: looks restricted but has privilege escalation | 6 | 100% | 83% | +17 |
+| | **total** | **85** | **96.5%** | **68.8%** | **+27.6** |
+
+---
+
+<details>
+<summary>Superseded: runs 1-8 (different harness)</summary>
+
 ## Run 8 — 2026-10-23
 
 **95.3% with the skill vs 79.4% baseline (+15.9) over 85 expectations.**
@@ -201,5 +232,7 @@ ClusterRole/ClusterRoleBinding creation (escalation path) and exec into pods.
 
 Evals test outcomes (issues found, report quality) not process (which tools were used).
 
+
+</details>
 
 </details>

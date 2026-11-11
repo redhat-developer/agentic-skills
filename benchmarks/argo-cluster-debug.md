@@ -1,13 +1,35 @@
 # argo-cluster-debug
 
-> **WITHDRAWN — do not quote these numbers.** This page measures the 9-eval,
-> 61-expectation suite as it stood at run 7. `argo-cluster-debug` has since absorbed
-> Argo Rollouts runtime control (promote / abort / retry) and destructive-delete safety
-> from the removed `argo-operations` skill, taking it to 12 evals and 80 expectations.
-> A verdict measured against a different suite does not transfer, so the run-7 verdict
-> files are archived under `results-archive/` and this skill is unmeasured until a
-> fresh blind A/B run is done.
+## Run 9 — 2026-11-10, new two-arm harness
 
+**95.0% with the skill vs 78.8% baseline (+16.2) over 80 expectations.**
+
+> Generated with `make baseline` / `make with-skill` / `make grade` — see
+> [methodology](README.md#how-to-produce-a-run). One blind grader scored both arms
+> of each eval in a single call, every verdict carries a verbatim evidence quote,
+> and the baseline ran from an empty directory so `skills/` was unreachable.
+> **Not comparable to runs 1-8** — different harness, stricter grader.
+
+| # | Eval | n | with-skill | baseline | delta |
+|---|------|--:|-----------:|---------:|------:|
+| 1 | Application OutOfSync and Degraded | 9 | 94% | 67% | +28 |
+| 2 | Canary Rollout stuck at step 2 | 8 | 100% | 69% | +31 |
+| 3 | Argo CD installation health check | 9 | 94% | 83% | +11 |
+| 4 | ApplicationSet not generating expected Applications | 6 | 100% | 92% | +8 |
+| 5 | ApplicationSet RollingSync stuck on production step | 7 | 100% | 71% | +29 |
+| 6 | Blue-green rollout stuck at preview, never promotes | 6 | 92% | 92% | +0 |
+| 7 | Ambiguous debug request with multiple Argo CD instances | 5 | 100% | 80% | +20 |
+| 8 | Suspended Application reported as broken | 6 | 100% | 92% | +8 |
+| 9 | Multi-source Application with one failing source | 5 | 100% | 80% | +20 |
+| 10 | Promote or assess canary rollout | 8 | 88% | 88% | +0 |
+| 11 | Abort and retry a stuck rollout | 6 | 83% | 67% | +17 |
+| 12 | Delete an Application — destructive operation safety | 5 | 90% | 70% | +20 |
+| | **total** | **80** | **95.0%** | **78.8%** | **+16.2** |
+
+---
+
+<details>
+<summary>Superseded: runs 1-8 (different harness)</summary>
 
 ## Run 8 — 2026-10-23
 
@@ -199,5 +221,7 @@ Model: `claude-opus-4-6`
 
 Tested on live OpenShift cluster (OpenShift GitOps operator) with `oc` CLI.
 
+
+</details>
 
 </details>

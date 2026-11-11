@@ -31,6 +31,8 @@ import datetime as dt
 import glob
 import json
 import pathlib
+import re
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -39,11 +41,23 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 # Read-only cluster verbs. Deliberately an allowlist, not --dangerously-skip-permissions:
 # an eval run is not a reason to hand an agent write access to a live cluster.
-CLUSTER_TOOLS = [
-    "Bash(oc get:*)", "Bash(oc describe:*)", "Bash(oc logs:*)",
-    "Bash(oc api-resources:*)", "Bash(oc version:*)", "Bash(oc whoami:*)",
-    "Bash(kubectl get:*)", "Bash(kubectl describe:*)", "Bash(kubectl logs:*)",
-    "Bash(kubectl api-resources:*)", "Bash(kubectl version:*)",
+# Allow the binaries, then deny the mutating verbs. An earlier version listed
+# "Bash(oc get:*)" and friends, but these patterns match by literal prefix, so
+# `oc -n openshift-gitops get pods` — the form anyone actually types — did not
+# match and was refused. That silently handicapped both arms on ~1-2 evals each.
+# Denying verbs is the only formulation that permits a read wherever the flags
+# happen to sit while still keeping writes out.
+CLUSTER_TOOLS = ["Bash(oc:*)", "Bash(kubectl:*)"]
+CLUSTER_DENY = [
+    "Bash(oc delete:*)", "Bash(oc apply:*)", "Bash(oc patch:*)", "Bash(oc create:*)",
+    "Bash(oc edit:*)", "Bash(oc replace:*)", "Bash(oc scale:*)", "Bash(oc annotate:*)",
+    "Bash(oc label:*)", "Bash(oc set:*)", "Bash(oc rollout:*)", "Bash(oc cp:*)",
+    "Bash(oc exec:*)", "Bash(oc adm:*)",
+    "Bash(kubectl delete:*)", "Bash(kubectl apply:*)", "Bash(kubectl patch:*)",
+    "Bash(kubectl create:*)", "Bash(kubectl edit:*)", "Bash(kubectl replace:*)",
+    "Bash(kubectl scale:*)", "Bash(kubectl annotate:*)", "Bash(kubectl label:*)",
+    "Bash(kubectl set:*)", "Bash(kubectl rollout:*)", "Bash(kubectl cp:*)",
+    "Bash(kubectl exec:*)",
 ]
 SKILL_TOOLS = ["Read", "Glob", "Grep"]
 
@@ -80,7 +94,16 @@ def main() -> int:
     ap.add_argument("--run-id", default=dt.date.today().isoformat())
     ap.add_argument("--cluster", action="store_true",
                     help="grant read-only oc/kubectl access to both arms")
+    ap.add_argument("--fixtures", default="",
+                    help="comma-separated repo-relative paths both arms must be able to read "
+                         "(e.g. 'tests'). Symlinked into the baseline's scratch dir so it can "
+                         "reach the material under audit WITHOUT reaching skills/.")
     ap.add_argument("--only", help="comma-separated eval ids, for re-running a subset")
+    ap.add_argument("--require-state", default="",
+                    help="assert cluster state before running, as "
+                         "'<kind>/<ns>/<name>=<jsonpath>:<expected>' (repeatable, comma-separated). "
+                         "Aborts if it does not match. An eval graded against a fixture that "
+                         "silently drifted is worse than no eval.")
     ap.add_argument("--timeout", type=int, default=900)
     a = ap.parse_args()
 
@@ -95,19 +118,85 @@ def main() -> int:
     out = ROOT / "benchmarks" / "runs" / a.run_id / f"{a.skill}.{a.condition}"
     out.mkdir(parents=True, exist_ok=True)
 
+    fixtures = [p for p in a.fixtures.split(",") if p]
     tools = list(CLUSTER_TOOLS) if a.cluster else []
     if a.condition == "with-skill":
         tools += SKILL_TOOLS
         frame, cwd = skill_frame(sd), str(ROOT)
         scratch = None
     else:
-        # Baseline runs from an empty directory: isolation by construction.
+        # Baseline runs from a scratch directory. Isolation is structural: skills/ is
+        # simply not there. But anything the eval asks the agent to *examine* must be,
+        # or the delta measures missing files rather than missing knowledge — the
+        # published repo-audit run gave both arms identical fixture access for exactly
+        # this reason.
         scratch = tempfile.mkdtemp(prefix="eval-baseline-")
+        for rel in fixtures:
+            src = (ROOT / rel).resolve()
+            if not src.exists():
+                sys.exit(f"--fixtures path does not exist: {rel}")
+            dst = pathlib.Path(scratch) / rel
+            dst.parent.mkdir(parents=True, exist_ok=True)
+            # COPY, never symlink. A symlink pointing outside the agent's working
+            # directory is refused by the sandbox, and the failure is silent from the
+            # harness's point of view: the run completes, the response looks like prose,
+            # and the arm scores near zero because it never saw a single file. That
+            # produced a 58.2% baseline against a published 79.4% before it was caught.
+            if src.is_dir():
+                shutil.copytree(src, dst, symlinks=False, dirs_exist_ok=True)
+            else:
+                shutil.copy2(src, dst)
+        if fixtures:
+            tools += SKILL_TOOLS  # Read/Glob/Grep, so it can actually open them
         frame, cwd = BASELINE_FRAME, scratch
+
+    # Fixture-state assertion. A cluster eval whose fixture has drifted still runs,
+    # still produces confident prose, and still gets graded — and the two arms can
+    # even see DIFFERENT states if anything touches the cluster between them, which
+    # silently invalidates the comparison rather than failing it. Check first.
+    for spec in [s for s in a.require_state.split(",") if s]:
+        try:
+            target, want = spec.rsplit(":", 1)
+            res, jp = target.split("=", 1)
+        except ValueError:
+            sys.exit(f"--require-state malformed: {spec!r}")
+        kind, ns, name = res.split("/", 2)
+        kc = "oc" if subprocess.run(["which", "oc"], capture_output=True).returncode == 0 else "kubectl"
+        got = subprocess.run([kc, "get", kind, name, "-n", ns, "-o", f"jsonpath={jp}"],
+                             capture_output=True, text=True).stdout.strip()
+        if got != want:
+            sys.exit(f"  FIXTURE CHECK FAILED: {kind}/{ns}/{name} {jp} is {got!r}, expected {want!r}.\n"
+                     f"  Re-arm the fixture (tests/argo-cluster-debug/fixtures/setup.sh) and make sure\n"
+                     f"  nothing else is touching the cluster, then re-run.")
+        print(f"  fixture ok: {kind}/{ns}/{name} {jp} == {want}")
 
     print(f"{a.skill} / {a.condition} / {a.model}: {len(evals)} evals -> {out.relative_to(ROOT)}")
     if scratch:
-        print(f"  baseline cwd: {scratch} (empty — skills/ is not reachable)")
+        print(f"  baseline cwd: {scratch} (skills/ unreachable; fixtures: {fixtures or 'none'})")
+
+    # Pre-flight: can the AGENT read the fixtures from where it will run?
+    # A filesystem check is not sufficient — a symlink out of the sandbox passes
+    # os.path checks and is still refused at read time, which fails silently: the
+    # arm completes, the prose looks fine, and every score is near zero.
+    if fixtures:
+        probe = (f"List the files under {fixtures[0]}/ and reply with ONLY the integer "
+                 f"count of regular files you can actually read. No prose.")
+        try:
+            pr = subprocess.run(["claude", "--model", a.model, "--print",
+                                 "--allowedTools", *SKILL_TOOLS],
+                                input=probe, cwd=cwd, capture_output=True,
+                                text=True, timeout=180)
+            m = re.search(r"\d+", pr.stdout or "")
+            seen = int(m.group(0)) if m else 0
+        except Exception:
+            seen = 0
+        on_disk = sum(1 for _ in (pathlib.Path(cwd) / fixtures[0]).rglob("*") if _.is_file())
+        if seen == 0:
+            sys.exit(f"  PRE-FLIGHT FAILED: agent read 0 files under {fixtures[0]}/ "
+                     f"({on_disk} present on disk at {cwd}). Aborting rather than "
+                     f"generating an arm that scores near zero for the wrong reason.")
+        print(f"  pre-flight: agent reached {seen} file(s) under {fixtures[0]}/ "
+              f"({on_disk} on disk)")
 
     for e in evals:
         f = out / f"e{e['id']}.md"
@@ -117,6 +206,8 @@ def main() -> int:
         cmd = ["claude", "--model", a.model, "--print"]
         if tools:
             cmd += ["--allowedTools", *tools]
+        if a.cluster:
+            cmd += ["--disallowedTools", *CLUSTER_DENY]
         try:
             r = subprocess.run(cmd, input=f"{frame}\n\n{e['prompt']}\n", cwd=cwd,
                                capture_output=True, text=True, timeout=a.timeout)

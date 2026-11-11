@@ -1,11 +1,11 @@
 # Benchmarks — methodology and caveats
 
-> **Mid-migration.** `argo-operations` and `argo-team-onboard` were removed; their
-> pages are archived as `archive-*.md`. `argo-cluster-debug` absorbed Argo Rollouts
-> runtime control (+19 expectations) so its published verdict no longer applies and is
-> withdrawn rather than carried forward. `argo-knowledge` is pending a narrowing.
-> `argo-performance-tuning` and `argo-repo-audit` are unchanged in scope and their
-> run-7 numbers stand. No weighted overall until every row is re-measured.
+> **Run 9 (2026-11-10) is a clean break.** The process behind runs 1-8 was undocumented
+> and could not be reproduced, which is why four skills had to have verdicts withdrawn
+> rather than refreshed when their scope changed. It has been rebuilt — see
+> [How to produce a run](#how-to-produce-a-run). The new grader is stricter, so
+> baselines sit lower and deltas run wider. **Do not compare run 9 figures to runs 1-8**;
+> the instrument changed. Historical numbers are kept in [Archive: runs 1-8](#archive-runs-18).
 
 Measured 2026-10-23 (run 7) against a live OpenShift cluster (OpenShift GitOps 1.21.3, Argo CD
 v3.4.5). **324 expectations per condition across the three unchanged skills, graded twice — once with the skills, once
@@ -13,11 +13,11 @@ without.** 1,174 verdicts, each carrying an evidence string, in [`results/`](res
 
 | Skill | with-skill | baseline | delta | per-eval detail |
 |-------|-----------:|---------:|------:|---|
-| `argo-performance-tuning` | **96.7%** | 64.0% | **+32.7** | [↗](argo-performance-tuning.md) |
-| `argo-repo-audit` | **95.3%** | 79.4% | **+15.9** | [↗](argo-repo-audit.md) |
-| `argo-cluster-debug` | — | — | — | **withdrawn** — scope changed, [↗](argo-cluster-debug.md) |
-| `argo-knowledge` | — | — | — | **withdrawn** — scope changed, [↗](argo-knowledge.md) |
-| **Weighted overall** | **96.1%** | **70.8%** | **+25.3** | **2 of 4 skills, n=192** — excludes `argo-cluster-debug` and `argo-knowledge` |
+| `argo-performance-tuning` | **94.9%** | 57.9% | **+36.9** | [↗](argo-performance-tuning.md) |
+| `argo-repo-audit` | **96.5%** | 68.8% | **+27.6** | [↗](argo-repo-audit.md) |
+| `argo-cluster-debug` | **95.0%** | 78.8% | **+16.2** | [↗](argo-cluster-debug.md) |
+| `argo-knowledge` | **95.4%** | 86.9% | **+8.5** | [↗](argo-knowledge.md) |
+| **Weighted overall** | **95.4%** | **74.5%** | **+20.9** | n=425 |
 
 **What run 7 actually re-measured.** Only `argo-cluster-debug` was re-run end to end
 (new fixtures for evals 2, 4 and 6), and only `argo-performance-tuning` was re-graded
@@ -311,3 +311,22 @@ unrelated to grading.
 
 Cluster-dependent suites need a real cluster — run them locally with `make eval-*`; CI
 can only run the two that do not.
+
+## Archive: runs 1-8
+
+Produced 2026-10-20 to 2026-10-23 by a process that was never scripted and cannot be
+reproduced. Kept for history, not for comparison — the harness, the grader and in two
+cases the skill scope all differ from run 9.
+
+| Skill | with-skill | baseline | delta |
+|-------|-----------:|---------:|------:|
+| `argo-performance-tuning` | 96.7% | 64.0% | +32.7 |
+| `argo-repo-audit` | 95.3% | 79.4% | +15.9 |
+| `argo-operations` *(removed)* | 96.4% | 81.6% | +14.8 |
+| `argo-cluster-debug` *(scope changed)* | 99.2% | 89.3% | +9.8 |
+| `argo-team-onboard` *(removed)* | 89.4% | 84.6% | +4.8 |
+| `argo-knowledge` *(scope changed)* | 98.5% | 93.9% | +4.5 |
+
+Verdict files for the removed and scope-changed skills are under
+[`results-archive/`](results-archive/). The run-1 verdicts behind the grader-drift table
+remain in [`results-run1-2026-10-20/`](results-run1-2026-10-20/).

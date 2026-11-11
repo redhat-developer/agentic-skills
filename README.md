@@ -113,7 +113,7 @@ you run.
 
 | Product | Covers | Skills | Status |
 |---------|--------|-------:|--------|
-| [**gitops**](skills/gitops) | Argo CD, Argo Rollouts | **4** | shipping, re-measuring |
+| [**gitops**](skills/gitops) | Argo CD, Argo Rollouts | **4** | shipping, benchmarked |
 | [**servicemesh**](skills/servicemesh) | Istio | — | [open for contributions](docs/adding-a-skill.md) |
 | [**serverless**](skills/serverless) | Knative | — | [open for contributions](docs/adding-a-skill.md) |
 | [**pipelines**](skills/pipelines) | Tekton | — | [open for contributions](docs/adding-a-skill.md) |
@@ -128,7 +128,7 @@ Evals are required — the guide explains the bar and why it is set where it is.
 Skills are grouped by product. Expand the one you use.
 
 <details open>
-<summary><b>🔵 GitOps</b> — Argo CD, Argo Rollouts · <b>4 skills</b>, re-measuring</summary>
+<summary><b>🔵 GitOps</b> — Argo CD, Argo Rollouts · <b>4 skills</b>, benchmarked</summary>
 
 > **Scope — Red Hat OpenShift GitOps.** These skills cover Argo CD and Argo Rollouts as
 > shipped and supported by the OpenShift GitOps operator, including the operator-managed
@@ -341,21 +341,21 @@ the answer is unflattering.
 <details open>
 <summary><b>🔵 GitOps</b> — 4 skills, re-measurement in progress</summary>
 
-> **These numbers are mid-migration.** Two skills were removed and `argo-cluster-debug`
-> absorbed Argo Rollouts runtime control, so its scope changed and its old verdict does
-> not transfer. This repo does not publish guesses, so rows whose scope changed are
-> marked unmeasured rather than carried forward or estimated. There is no weighted
-> overall covers only the three skills whose scope did not change (n=324);
-> `argo-cluster-debug` is excluded, so it is not a portfolio figure and should not be
-> quoted as one.
+> **Run 9 (2026-11-10) — measured with new tooling, and not comparable to runs 1–8.**
+> The process that produced the earlier runs was undocumented and could not be
+> reproduced, so it was rebuilt: `make baseline` / `make with-skill` / `make grade`,
+> with a strong baseline, structural isolation, one blind grader per comparison and a
+> verbatim evidence quote behind every verdict. The new grader is stricter, so baselines
+> sit lower and deltas run wider than the historical figures. Rank order is unchanged.
+> Historical numbers are in [benchmarks/README.md](benchmarks/README.md#archive-runs-18).
 
 | Skill | with-skill | baseline | delta | |
 |-------|-----------:|---------:|------:|---|
-| [`argo-performance-tuning`](benchmarks/argo-performance-tuning.md) | **96.7%** | 64.0% | **+32.7** | scope unchanged |
-| [`argo-repo-audit`](benchmarks/argo-repo-audit.md) | **95.3%** | 79.4% | **+15.9** | scope unchanged |
-| [`argo-cluster-debug`](benchmarks/argo-cluster-debug.md) | — | — | — | **withdrawn** — gained 19 expectations, must re-measure |
-| [`argo-knowledge`](benchmarks/argo-knowledge.md) | — | — | — | **withdrawn** — 4 references cut, scope changed |
-| **Weighted overall** | **96.1%** | **70.8%** | **+25.3** | **2 of 4 skills, n=192** — excludes `argo-cluster-debug` and `argo-knowledge` |
+| [`argo-performance-tuning`](benchmarks/argo-performance-tuning.md) | **94.9%** | 57.9% | **+36.9** | |
+| [`argo-repo-audit`](benchmarks/argo-repo-audit.md) | **96.5%** | 68.8% | **+27.6** | |
+| [`argo-cluster-debug`](benchmarks/argo-cluster-debug.md) | **95.0%** | 78.8% | **+16.2** | |
+| [`argo-knowledge`](benchmarks/argo-knowledge.md) | **95.4%** | 86.9% | **+8.5** | |
+| **Weighted overall** | **95.4%** | **74.5%** | **+20.9** | n=425 |
 
 **The delta tracks how product-specific a skill is.** Performance tuning — exact setting
 names, defaults the operator silently overrides, which CR field actually wins — gains

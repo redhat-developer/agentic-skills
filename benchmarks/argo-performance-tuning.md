@@ -1,5 +1,45 @@
 # argo-performance-tuning
 
+## Run 9 — 2026-11-10, new two-arm harness
+
+**94.9% with the skill vs 57.9% baseline (+36.9) over 107 expectations.**
+
+> Generated with `make baseline` / `make with-skill` / `make grade` — see
+> [methodology](README.md#how-to-produce-a-run). One blind grader scored both arms
+> of each eval in a single call, every verdict carries a verbatim evidence quote,
+> and the baseline ran from an empty directory so `skills/` was unreachable.
+> **Not comparable to runs 1-8** — different harness, stricter grader.
+
+| # | Eval | n | with-skill | baseline | delta |
+|---|------|--:|-----------:|---------:|------:|
+| 1 | Repo-server OOMKilled on monorepo mass sync | 8 | 100% | 44% | +56 |
+| 2 | Sluggish UI and slow drift detection at scale | 6 | 100% | 58% | +42 |
+| 3 | Single controller maxed out across many clusters | 6 | 92% | 67% | +25 |
+| 4 | Context deadline exceeded viewing a large Application | 5 | 100% | 70% | +30 |
+| 5 | Git provider rate-limiting across many apps on one repo | 4 | 88% | 0% | +88 |
+| 6 | High baseline load without webhooks at scale | 5 | 100% | 70% | +30 |
+| 7 | User requests the known Operator misconfiguration directly | 5 | 100% | 90% | +10 |
+| 8 | Sharding requested with only one cluster | 4 | 100% | 88% | +12 |
+| 9 | Floating tag freshness vs. cache TTL | 4 | 100% | 100% | +0 |
+| 10 | Shallow clone on a public repo with no existing Secret | 4 | 100% | 0% | +100 |
+| 11 | Unsupported sharding algorithm requested on OpenShift GitOps | 4 | 75% | 75% | +0 |
+| 12 | Multiple simultaneous symptoms — prioritization | 6 | 83% | 50% | +33 |
+| 13 | Safety model compliance on a direct apply request | 4 | 88% | 50% | +38 |
+| 14 | Standalone Argo CD, not the OpenShift GitOps Operator | 5 | 100% | 100% | +0 |
+| 15 | High controller CPU from child-resource status churn | 5 | 90% | 60% | +30 |
+| 16 | High API load on managed clusters from non-GitOps resources | 6 | 100% | 50% | +50 |
+| 17 | Monorepo commit invalidates cache for unrelated apps | 6 | 100% | 58% | +42 |
+| 18 | Shard rebalancing without restarts requested | 5 | 100% | 50% | +50 |
+| 19 | Controller slow calling managed cluster API, not repo-server | 5 | 90% | 70% | +20 |
+| 20 | Large resource tree causing Redis traffic | 5 | 80% | 0% | +80 |
+| 21 | Round-robin assumed to be risk-free | 5 | 100% | 70% | +30 |
+| | **total** | **107** | **94.9%** | **57.9%** | **+36.9** |
+
+---
+
+<details>
+<summary>Superseded: runs 1-8 (different harness)</summary>
+
 ## Run 7 — 2026-10-23, live cluster, blind A/B
 
 **96.7% with the skill vs 64.0% baseline (+32.7) over 107 expectations.**
@@ -151,5 +191,7 @@ repo's historical `claude-opus-4-6`/`claude-sonnet-4-6` naming.
   field in eval 10, the pro-`consistent-hashing` stance in eval 11). With the skill loaded, this
   gap disappears entirely.
 
+
+</details>
 
 </details>

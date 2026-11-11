@@ -1,0 +1,887 @@
+{
+  "skill": "argo-knowledge",
+  "model": "claude-opus-5",
+  "run": "2026-11-10 run 9 — new two-arm harness",
+  "condition": "with-skill",
+  "evals": [
+    {
+      "id": 1,
+      "name": "eval-1",
+      "expectations": [
+        {
+          "text": "Output uses spec.sources (plural array) not spec.source (singular) — multi-source Applications require the array form",
+          "verdict": "pass",
+          "evidence": "spec:\n  project: default\n  sources:"
+        },
+        {
+          "text": "Output contains exactly two entries in the sources array",
+          "verdict": "pass",
+          "evidence": "- repoURL: registry.example.com/charts ... - repoURL: https://github.com/org/config.git"
+        },
+        {
+          "text": "First source is the Helm/OCI chart: repoURL is the registry host and path WITHOUT the oci:// scheme (registry.example.com/charts) and chart: webapp is a separate field — per Argo CD docs, \"the oci:// syntax is not included\" in repoURL",
+          "verdict": "pass",
+          "evidence": "repoURL: registry.example.com/charts\n      chart: webapp"
+        },
+        {
+          "text": "Helm source uses targetRevision with semver constraint 2.x or similar",
+          "verdict": "pass",
+          "evidence": "targetRevision: 2.*                      # semver constraint = \"2.x\""
+        },
+        {
+          "text": "Second source is Git with repoURL: https://github.com/org/config.git",
+          "verdict": "pass",
+          "evidence": "- repoURL: https://github.com/org/config.git"
+        },
+        {
+          "text": "Git source has ref.targetRevision: main and path containing envs/production",
+          "verdict": "partial",
+          "evidence": "targetRevision: main\n      ref: values                              # defines $values; a pure ref needs no `path`"
+        },
+        {
+          "text": "Helm source references the Git source values via $values syntax (e.g., $values/envs/production/values.yaml)",
+          "verdict": "pass",
+          "evidence": "valueFiles:\n          - $values/envs/production/values.yaml"
+        },
+        {
+          "text": "Output does NOT use helm.values as a string — uses helm.valuesObject or the $values ref pattern",
+          "verdict": "pass",
+          "evidence": "valuesObject:                          # structured map, not the deprecated string field"
+        },
+        {
+          "text": "Sync policy has automated with selfHeal: true but prune: false or prune omitted",
+          "verdict": "pass",
+          "evidence": "automated:\n      selfHeal: true\n      prune: false                             # manual prune control, as requested"
+        },
+        {
+          "text": "syncOptions includes ServerSideApply=true",
+          "verdict": "pass",
+          "evidence": "syncOptions:\n      - ServerSideApply=true"
+        },
+        {
+          "text": "ignoreDifferences entry for group apps kind Deployment with jsonPointers /spec/replicas",
+          "verdict": "pass",
+          "evidence": "ignoreDifferences:\n    - group: apps\n      kind: Deployment\n      jsonPointers:\n        - /spec/replicas"
+        },
+        {
+          "text": "Destination namespace is webapp-prod with server https://kubernetes.default.svc",
+          "verdict": "pass",
+          "evidence": "server: https://kubernetes.default.svc     # in-cluster\n    namespace: webapp-prod"
+        }
+      ]
+    },
+    {
+      "id": 2,
+      "name": "eval-2",
+      "expectations": [
+        {
+          "text": "Output contains kind: ApplicationSet with apiVersion: argoproj.io/v1alpha1",
+          "verdict": "pass",
+          "evidence": "apiVersion: argoproj.io/v1alpha1\nkind: ApplicationSet"
+        },
+        {
+          "text": "Output has goTemplate: true AND goTemplateOptions containing missingkey=error",
+          "verdict": "pass",
+          "evidence": "goTemplate: true\n  goTemplateOptions:\n    - missingkey=error"
+        },
+        {
+          "text": "Output uses a merge generator with mergeKeys containing 'name'",
+          "verdict": "pass",
+          "evidence": "- merge:\n        mergeKeys:\n          - name"
+        },
+        {
+          "text": "Merge generator contains a clusters generator with selector matchLabels tier: production",
+          "verdict": "pass",
+          "evidence": "- clusters:\n              selector:\n                matchLabels:\n                  tier: production"
+        },
+        {
+          "text": "Merge generator contains a git file generator with repoURL https://github.com/org/fleet-config.git",
+          "verdict": "pass",
+          "evidence": "- git:\n              repoURL: https://github.com/org/fleet-config.git"
+        },
+        {
+          "text": "Git file generator path references clusters/{{.name}}/config.json or equivalent Go template syntax",
+          "verdict": "partial",
+          "evidence": "files:\n                - path: 'clusters/*/config.json'"
+        },
+        {
+          "text": "Template source points at the OCI registry host and path WITHOUT the oci:// scheme (e.g. repoURL: ghcr.io/org with the chart name in a separate chart: field) — consistent with eval 1 and the Argo CD docs' \"the oci:// syntax is not included\"",
+          "verdict": "pass",
+          "evidence": "repoURL: ghcr.io/org          # no oci:// scheme\n        chart: app"
+        },
+        {
+          "text": "Template source targetRevision references the appVersion field from the config (e.g., {{.appVersion}})",
+          "verdict": "pass",
+          "evidence": "targetRevision: '{{.appVersion}}'"
+        },
+        {
+          "text": "preserveResourcesOnDeletion: true is under spec.syncPolicy (NOT at spec level and NOT under strategy) — spec.preserveResourcesOnDeletion is not in the CRD and is silently pruned by the API server",
+          "verdict": "pass",
+          "evidence": "syncPolicy:\n    preserveResourcesOnDeletion: true"
+        },
+        {
+          "text": "ignoreApplicationDifferences is present with jsonPointers or jqPathExpressions targeting spec.source.targetRevision",
+          "verdict": "pass",
+          "evidence": "ignoreApplicationDifferences:\n    - jsonPointers:\n        - /spec/source/targetRevision"
+        }
+      ]
+    },
+    {
+      "id": 3,
+      "name": "eval-3",
+      "expectations": [
+        {
+          "text": "Output contains kind: Rollout with strategy.blueGreen (not canary)",
+          "verdict": "pass",
+          "evidence": "kind: Rollout\n...\n  strategy:\n    blueGreen:"
+        },
+        {
+          "text": "Blue-green config has activeService: checkout-active and previewService: checkout-preview",
+          "verdict": "pass",
+          "evidence": "activeService: checkout-active\n      previewService: checkout-preview"
+        },
+        {
+          "text": "autoPromotionEnabled is explicitly set to false",
+          "verdict": "pass",
+          "evidence": "autoPromotionEnabled: false          # manual promotion required"
+        },
+        {
+          "text": "prePromotionAnalysis references templates with templateName: smoke-test",
+          "verdict": "pass",
+          "evidence": "prePromotionAnalysis:\n        templates:\n          - templateName: smoke-test"
+        },
+        {
+          "text": "scaleDownDelaySeconds is set to 600",
+          "verdict": "pass",
+          "evidence": "scaleDownDelaySeconds: 600           # old ReplicaSet stays 10 min after cutover"
+        },
+        {
+          "text": "Output contains a separate AnalysisTemplate kind with name: smoke-test",
+          "verdict": "pass",
+          "evidence": "kind: AnalysisTemplate\nmetadata:\n  name: smoke-test"
+        },
+        {
+          "text": "AnalysisTemplate metric uses provider.job (not prometheus, not web)",
+          "verdict": "pass",
+          "evidence": "provider:\n        job:\n          spec:"
+        },
+        {
+          "text": "Job spec container image is registry.example.com/smoke-tests:latest",
+          "verdict": "pass",
+          "evidence": "image: registry.example.com/smoke-tests:latest"
+        },
+        {
+          "text": "Job container command or args references the preview service URL or hostname",
+          "verdict": "pass",
+          "evidence": "value: http://checkout-preview.checkout.svc.cluster.local:8080 ... curl ... \"$PREVIEW_URL/healthz\""
+        },
+        {
+          "text": "AnalysisTemplate metric has count: 1 or count omitted (single measurement, no interval)",
+          "verdict": "pass",
+          "evidence": "count: 1          # single measurement ... # No interval"
+        }
+      ]
+    },
+    {
+      "id": 4,
+      "name": "eval-4",
+      "expectations": [
+        {
+          "text": "ConfigMap contains service.slack config referencing $slack-token",
+          "verdict": "pass",
+          "evidence": "service.slack: |\n      token: $slack-token"
+        },
+        {
+          "text": "ConfigMap contains service.github config with appID and installationID referencing secret keys",
+          "verdict": "pass",
+          "evidence": "service.github: |\n      appID: $github-appID\n      installationID: $github-installationID\n      privateKey: $github-privateKey"
+        },
+        {
+          "text": "Secret contains slack-token key",
+          "verdict": "pass",
+          "evidence": "slack-token: xoxb-REPLACE-ME"
+        },
+        {
+          "text": "Secret contains github-app-privateKey or similar key for GitHub App authentication",
+          "verdict": "pass",
+          "evidence": "github-privateKey: |\n    -----BEGIN RSA PRIVATE KEY-----"
+        },
+        {
+          "text": "Slack template uses blocks array with section type and mrkdwn (not legacy attachments format)",
+          "verdict": "pass",
+          "evidence": "\"type\": \"section\",\n              \"text\": {\n                \"type\": \"mrkdwn\","
+        },
+        {
+          "text": "Slack template includes an actions block with a button element linking to argocdUrl",
+          "verdict": "pass",
+          "evidence": "\"type\": \"actions\",\n              \"elements\": [\n                {\n                  \"type\": \"button\"... \"url\": {{ printf \"%s/applications/%s?operation=true\" .context.argocdUrl .app.metadata.name | toJson }}"
+        },
+        {
+          "text": "GitHub trigger uses oncePer referencing app.status.operationState.syncResult.revision",
+          "verdict": "pass",
+          "evidence": "send: [github-status-success]\n        oncePer: app.status.operationState.syncResult.revision"
+        },
+        {
+          "text": "GitHub trigger condition maps operation phases to commit status states (success/failure/pending)",
+          "verdict": "pass",
+          "evidence": "when: app.status.operationState != nil and app.status.operationState.phase in ['Running']\n        send: [github-status-pending]"
+        },
+        {
+          "text": "Application annotation for Slack: notifications.argoproj.io/subscribe.on-sync-failed.slack",
+          "verdict": "partial",
+          "evidence": "notifications.argoproj.io/subscribe.on-sync-failed-slack.slack: platform-alerts"
+        },
+        {
+          "text": "Application annotation for GitHub: notifications.argoproj.io/subscribe referencing the github trigger and service",
+          "verdict": "pass",
+          "evidence": "notifications.argoproj.io/subscribe.on-sync-succeeded-github.github: \"\""
+        }
+      ]
+    },
+    {
+      "id": 5,
+      "name": "eval-5",
+      "expectations": [
+        {
+          "text": "Uses apiVersion argoproj.io/v1beta1 kind ArgoCD (not v1alpha1, not raw Deployment manifests)",
+          "verdict": "pass",
+          "evidence": "apiVersion: argoproj.io/v1beta1       # NOT v1alpha1 — deprecated for this kind\nkind: ArgoCD"
+        },
+        {
+          "text": "Cluster-scoped instance in openshift-gitops namespace (not argocd)",
+          "verdict": "pass",
+          "evidence": "name: openshift-gitops\n  namespace: openshift-gitops"
+        },
+        {
+          "text": "spec.server.route.enabled true with tls.termination reencrypt",
+          "verdict": "pass",
+          "evidence": "route:\n      enabled: true\n      tls:\n        termination: reencrypt"
+        },
+        {
+          "text": "spec.sso.provider: dex with spec.sso.dex.openShiftOAuth: true — NOT top-level spec.dex, which is no longer supported from Argo CD Operator v0.8.0 onwards and silently fails to configure SSO",
+          "verdict": "pass",
+          "evidence": "sso:\n    provider: dex\n    dex:\n      openShiftOAuth: true ... Top-level `spec.dex` is unsupported since Argo CD Operator v0.8.0."
+        },
+        {
+          "text": "RBAC policy maps cluster-admins to role:admin",
+          "verdict": "pass",
+          "evidence": "policy: |\n      g, cluster-admins, role:admin"
+        },
+        {
+          "text": "RBAC defaultPolicy is role:readonly",
+          "verdict": "pass",
+          "evidence": "defaultPolicy: 'role:readonly'"
+        },
+        {
+          "text": "resourceExclusions includes tekton.dev TaskRun and PipelineRun",
+          "verdict": "pass",
+          "evidence": "- apiGroups:\n        - tekton.dev\n      kinds:\n        - TaskRun\n        - PipelineRun"
+        },
+        {
+          "text": "resourceExclusions includes operators.coreos.com InstallPlan",
+          "verdict": "pass",
+          "evidence": "- apiGroups:\n        - operators.coreos.com\n      kinds:\n        - InstallPlan"
+        },
+        {
+          "text": "spec.notifications.enabled true",
+          "verdict": "pass",
+          "evidence": "notifications:\n    enabled: true                     # deploys argocd-notifications-controller"
+        },
+        {
+          "text": "Namespace-scoped instance in platform-team namespace with route and sourceNamespaces",
+          "verdict": "pass",
+          "evidence": "name: platform-team\n  namespace: platform-team ... route:\n      enabled: true ... sourceNamespaces:\n    - platform-team-apps\n    - platform-staging"
+        },
+        {
+          "text": "Target namespace label argocd.argoproj.io/managed-by pointing to the instance namespace",
+          "verdict": "pass",
+          "evidence": "labels:\n    argocd.argoproj.io/managed-by: platform-team    # value = the INSTANCE's namespace"
+        },
+        {
+          "text": "Explains that OpenShift uses SecurityContextConstraints (SCCs) instead of PodSecurityPolicies and Rollout pods need appropriate SCC bindings",
+          "verdict": "pass",
+          "evidence": "On OpenShift, every pod passes through SCC admission ... scope it to the workload's ServiceAccount, not the controller's: `oc adm policy add-scc-to-user anyuid -z <workload-sa> -n <ns>`"
+        }
+      ]
+    },
+    {
+      "id": 6,
+      "name": "eval-6",
+      "expectations": [
+        {
+          "text": "ConfigMap argocd-cmd-params-cm with data.application.namespaces listing team namespaces",
+          "verdict": "pass",
+          "evidence": "name: argocd-cmd-params-cm\n  namespace: argocd\ndata:\n  application.namespaces: team-frontend-apps, team-backend-apps, team-data-apps"
+        },
+        {
+          "text": "AppProject has spec.sourceNamespaces containing team-frontend-apps",
+          "verdict": "pass",
+          "evidence": "sourceNamespaces:\n    - team-frontend-apps"
+        },
+        {
+          "text": "AppProject has sourceRepos restricted to https://github.com/org/frontend-*",
+          "verdict": "pass",
+          "evidence": "sourceRepos:\n    - https://github.com/org/frontend-*"
+        },
+        {
+          "text": "AppProject has destinations restricted to frontend team namespaces only",
+          "verdict": "pass",
+          "evidence": "destinations:\n    - server: https://kubernetes.default.svc\n      namespace: team-frontend-apps"
+        },
+        {
+          "text": "AppProject has clusterResourceWhitelist that is empty or absent (no cluster-scoped resources)",
+          "verdict": "pass",
+          "evidence": "clusterResourceWhitelist: []"
+        },
+        {
+          "text": "AppProject has namespaceResourceWhitelist listing only Deployment, Service, ConfigMap, Ingress",
+          "verdict": "pass",
+          "evidence": "namespaceResourceWhitelist:\n    - group: apps\n      kind: Deployment\n    - group: ''\n      kind: Service\n    - group: ''\n      kind: ConfigMap\n    - group: networking.k8s.io\n      kind: Ingress"
+        },
+        {
+          "text": "Sample Application metadata.namespace is team-frontend-apps (NOT argocd)",
+          "verdict": "pass",
+          "evidence": "name: webapp\n  namespace: team-frontend-apps      # the tenant namespace, not openshift-gitops"
+        },
+        {
+          "text": "Application spec.project references the frontend team project",
+          "verdict": "pass",
+          "evidence": "spec:\n  project: team-frontend"
+        },
+        {
+          "text": "RBAC policy uses three-part syntax: project/namespace/app (not legacy two-part)",
+          "verdict": "pass",
+          "evidence": "the object path becomes **`<project>/<namespace>/<application>`**, not `<project>/<application>`"
+        },
+        {
+          "text": "RBAC policy scopes frontend-devs to only their project and namespace",
+          "verdict": "pass",
+          "evidence": "p, role:frontend-dev, applications, sync, team-frontend/team-frontend-apps/*, allow"
+        },
+        {
+          "text": "Does NOT suggest running multiple Argo CD instances — uses single instance pattern",
+          "verdict": "pass",
+          "evidence": "this requires a **cluster-scoped** Argo CD install (it does not work namespace-scoped)"
+        },
+        {
+          "text": "Mentions switching resource tracking to annotation or annotation+label for long composite names",
+          "verdict": "pass",
+          "evidence": "resourceTrackingMethod: annotation"
+        }
+      ]
+    },
+    {
+      "id": 7,
+      "name": "eval-7",
+      "expectations": [
+        {
+          "text": "Recommends argocd-agent (not traditional multi-cluster Argo CD)",
+          "verdict": "pass",
+          "evidence": "land on exactly one architecture in the OpenShift GitOps portfolio: **argocd-agent** in a hub-and-spoke topology"
+        },
+        {
+          "text": "Describes the principal component running on the control plane",
+          "verdict": "pass",
+          "evidence": "**Principal** | Terminates agent gRPC connections; config hub and status aggregation point"
+        },
+        {
+          "text": "Describes the agent component running on each edge/workload cluster",
+          "verdict": "pass",
+          "evidence": "**Agent** | Dials out to the principal over gRPC/mTLS; the only outbound Argo dependency"
+        },
+        {
+          "text": "Specifies autonomous mode (not managed mode) for edge clusters",
+          "verdict": "pass",
+          "evidence": "describes **autonomous mode**, and that's my recommendation"
+        },
+        {
+          "text": "Recommends the fully autonomous pattern with local Argo CD stack (application-controller + repo-server + redis) on each edge cluster",
+          "verdict": "pass",
+          "evidence": "Local instance — **application-controller, repo-server, redis** are the mandatory three"
+        },
+        {
+          "text": "Explains that agents initiate connections outbound to the principal (not control plane reaching into clusters)",
+          "verdict": "pass",
+          "evidence": "**the agent dials out to the control plane**, so the edge needs no inbound rules at all"
+        },
+        {
+          "text": "Mentions mTLS or certificate-based authentication between agent and principal",
+          "verdict": "pass",
+          "evidence": "CA / certificate issuance | mTLS identity for the principal and all 200 agents"
+        },
+        {
+          "text": "Explains that edge clusters continue reconciling independently during connectivity loss",
+          "verdict": "pass",
+          "evidence": "Reconciles while disconnected | Yes | Yes"
+        },
+        {
+          "text": "States that Application status syncs back to control plane for observability when connected",
+          "verdict": "pass",
+          "evidence": "Status flows up | Yes | Yes — observability only"
+        },
+        {
+          "text": "Does NOT suggest storing cluster credentials on the control plane",
+          "verdict": "pass",
+          "evidence": "Notably **absent**: cluster credentials. There are no kubeconfigs or bearer tokens for the 200 edge clusters anywhere on the hub."
+        }
+      ]
+    },
+    {
+      "id": 8,
+      "name": "eval-8",
+      "expectations": [
+        {
+          "text": "Uses apiVersion promoter.argoproj.io/v1alpha1 for all promoter CRDs",
+          "verdict": "pass",
+          "evidence": "apiVersion: promoter.argoproj.io/v1alpha1\nkind: ScmProvider"
+        },
+        {
+          "text": "ScmProvider with github field containing appID and installationID",
+          "verdict": "pass",
+          "evidence": "github:\n    appID: 123456          # replace: GitHub App settings → App ID\n    installationID: 789012"
+        },
+        {
+          "text": "ScmProvider references a Secret for githubAppPrivateKey",
+          "verdict": "pass",
+          "evidence": "secretRef:\n    name: github-app-secret"
+        },
+        {
+          "text": "GitRepository with github field containing owner: acme-corp and name: payments",
+          "verdict": "pass",
+          "evidence": "github:\n    owner: acme-corp\n    name: payments"
+        },
+        {
+          "text": "GitRepository references the ScmProvider via scmProviderRef",
+          "verdict": "pass",
+          "evidence": "scmProviderRef:\n    kind: ScmProvider\n    name: github"
+        },
+        {
+          "text": "PromotionStrategy with 3 environments: environment/development, environment/staging, environment/production",
+          "verdict": "pass",
+          "evidence": "- branch: environment/development ... - branch: environment/staging ... - branch: environment/production"
+        },
+        {
+          "text": "Production environment has autoMerge: false for manual approval",
+          "verdict": "pass",
+          "evidence": "autoMerge: false            # manual approval: PR opens and waits for a human"
+        },
+        {
+          "text": "Dev and staging have autoMerge: true (explicit or default)",
+          "verdict": "pass",
+          "evidence": "# autoMerge defaults to true"
+        },
+        {
+          "text": "activeCommitStatuses includes argocd-health at the strategy level",
+          "verdict": "pass",
+          "evidence": "activeCommitStatuses:\n    - key: argocd-health      # must be healthy in env N before promoting to N+1"
+        },
+        {
+          "text": "Production environment has additional activeCommitStatus for performance-test",
+          "verdict": "partial",
+          "evidence": "- branch: environment/staging ... activeCommitStatuses:\n        - key: performance-test   # additional gate on leaving staging -> prod"
+        },
+        {
+          "text": "proposedCommitStatuses includes security-scan at the strategy level",
+          "verdict": "pass",
+          "evidence": "proposedCommitStatuses:\n    - key: security-scan      # must pass before merging into ANY environment"
+        },
+        {
+          "text": "ArgoCDCommitStatus resource (note capitalisation) with the required promotionStrategyRef and applicationSelector — NOT gitRepositoryRef, which is not a field on this kind",
+          "verdict": "pass",
+          "evidence": "kind: ArgoCDCommitStatus ... spec:\n  promotionStrategyRef:\n    name: payments\n  applicationSelector: ... There is **no `gitRepositoryRef`** on this kind."
+        }
+      ]
+    },
+    {
+      "id": 9,
+      "name": "Notifications on OpenShift GitOps",
+      "expectations": [
+        {
+          "text": "Identifies the root cause: argocd-notifications-cm is operator-managed on OpenShift GitOps and edits are reconciled away",
+          "verdict": "pass",
+          "evidence": "On OpenShift GitOps, `argocd-notifications-cm` is **operator-managed**. Your edit applies cleanly, survives until the next reconcile loop, and then vanishes."
+        },
+        {
+          "text": "Sets ArgoCD.spec.notifications.enabled: true to deploy the notifications controller",
+          "verdict": "pass",
+          "evidence": "spec:\n  notifications:\n    enabled: true"
+        },
+        {
+          "text": "Uses a NotificationsConfiguration CR (argoproj.io/v1alpha1) instead of editing the ConfigMap",
+          "verdict": "pass",
+          "evidence": "apiVersion: argoproj.io/v1alpha1\nkind: NotificationsConfiguration"
+        },
+        {
+          "text": "Puts services/templates/triggers as map[string]string keys (service.slack, template.<name>, trigger.<name>), matching the ConfigMap key names",
+          "verdict": "pass",
+          "evidence": "services:\n    service.slack: |\n      token: $slack-token ... templates:\n    template.app-sync-failed: ... triggers:\n    trigger.on-sync-failed:"
+        },
+        {
+          "text": "States that the Secret argocd-notifications-secret still has to be created separately — the CR holds no credentials",
+          "verdict": "pass",
+          "evidence": "The CR holds no credentials. `$slack-token` resolves from `argocd-notifications-secret` in the same namespace, which you own"
+        },
+        {
+          "text": "Does NOT present hand-editing argocd-notifications-cm as the solution",
+          "verdict": "pass",
+          "evidence": "Templates / triggers / services | `NotificationsConfiguration` | Not on `argocd-notifications-cm`"
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "name": "Deploy Argo Rollouts on OpenShift GitOps",
+      "expectations": [
+        {
+          "text": "Uses a RolloutManager CR (argoproj.io/v1alpha1) rather than installing argo-rollouts manifests directly",
+          "verdict": "pass",
+          "evidence": "**You don't install Argo Rollouts on OpenShift GitOps.** You create a `RolloutManager` CR and the operator reconciles the controller for you."
+        },
+        {
+          "text": "Sets namespaceScoped: false for cluster-wide watching",
+          "verdict": "pass",
+          "evidence": "namespaceScoped: false             # false = watch Rollouts in every namespace"
+        },
+        {
+          "text": "Uses spec.nodePlacement.nodeSelector (and tolerations) for infra node placement",
+          "verdict": "pass",
+          "evidence": "nodePlacement:\n    nodeSelector:\n      node-role.kubernetes.io/infra: \"\"\n    tolerations:"
+        },
+        {
+          "text": "Notes that editing the argo-rollouts Deployment directly is reverted by the operator",
+          "verdict": "pass",
+          "evidence": "**Don't `kubectl edit` the `argo-rollouts` Deployment.** The operator reverts it."
+        },
+        {
+          "text": "Does not invent fields — spec keys come from the RolloutManager schema (e.g. ha, controllerResources, env, plugins, version)",
+          "verdict": "pass",
+          "evidence": "controllerResources:\n    requests: {cpu: 100m, memory: 128Mi}"
+        }
+      ]
+    },
+    {
+      "id": 11,
+      "name": "Attach a tenant namespace to a central Argo CD",
+      "expectations": [
+        {
+          "text": "Explains that NamespaceManagement is a two-sided handshake — the tenant CR alone does nothing",
+          "verdict": "pass",
+          "evidence": "**`NamespaceManagement` is a two-sided handshake, and you've only done one side.**"
+        },
+        {
+          "text": "Tenant side: NamespaceManagement (argoproj.io/v1beta1) in the tenant namespace with required spec.managedBy set to the Argo CD instance's namespace",
+          "verdict": "pass",
+          "evidence": "managedBy: openshift-gitops   # the Argo CD instance's NAMESPACE — only field, required"
+        },
+        {
+          "text": "Argo CD side: ArgoCD.spec.namespaceManagement entry with both name and allowManagedBy: true",
+          "verdict": "pass",
+          "evidence": "- name: payments-dev        # or payments-* for a pattern\n      allowManagedBy: true      # both fields required"
+        },
+        {
+          "text": "Notes the failure is silent — no event or condition is raised when only one side is configured",
+          "verdict": "pass",
+          "evidence": "the failure is completely silent. A `NamespaceManagement` CR with no matching `ArgoCD.spec.namespaceManagement` entry is inert — no event, no status condition, no controller log line."
+        },
+        {
+          "text": "Recommends against hand-editing --application-namespaces, which the operator resets",
+          "verdict": "partial",
+          "evidence": "`NamespaceManagement` only replaces `--application-namespaces`, it doesn't grant the Argo CD-level permissions underneath it"
+        }
+      ]
+    },
+    {
+      "id": 12,
+      "name": "Why do ArgoCD CR edits revert on the default instance",
+      "expectations": [
+        {
+          "text": "Identifies GitopsService (pipelines.openshift.io/v1alpha1, cluster-scoped, normally named 'cluster') as the owner of the default openshift-gitops instance",
+          "verdict": "pass",
+          "evidence": "owned by a cluster-scoped `GitopsService` CR named `cluster`"
+        },
+        {
+          "text": "Explains the ownerReference with blockOwnerDeletion on the default ArgoCD CR",
+          "verdict": "pass",
+          "evidence": "the ArgoCD CR carries an ownerReference back to it with `blockOwnerDeletion: true`"
+        },
+        {
+          "text": "Directs node placement/tolerations/imagePullPolicy for default workloads to GitopsService (runOnInfra, nodeSelector, tolerations) rather than the ArgoCD CR",
+          "verdict": "pass",
+          "evidence": "Infra node placement for the *default* instance's workloads is a `GitopsService` setting... runOnInfra: true / nodeSelector / tolerations"
+        },
+        {
+          "text": "Notes that a separately created ArgoCD CR in another namespace is freely editable — which is why the other instances behave differently",
+          "verdict": "pass",
+          "evidence": "Create your own `ArgoCD` CR in a separate namespace — it has no `GitopsService` owner, so `spec.nodePlacement` there is yours and stays put"
+        },
+        {
+          "text": "Suggests checking ownerReferences to confirm, e.g. kubectl get argocd openshift-gitops -n openshift-gitops -o jsonpath='{.metadata.ownerReferences}'",
+          "verdict": "pass",
+          "evidence": "kubectl get argocd openshift-gitops -n openshift-gitops \\\n  -o jsonpath='{.metadata.ownerReferences}'"
+        }
+      ]
+    },
+    {
+      "id": 13,
+      "name": "Image Updater via the operator CRD",
+      "expectations": [
+        {
+          "text": "Uses the ImageUpdater CRD with apiVersion argocd-image-updater.argocd-image-updater.argoproj.io or notes the SEPARATE API group argocd-image-updater.argoproj.io/v1alpha1 — not argoproj.io",
+          "verdict": "pass",
+          "evidence": "apiVersion: argocd-image-updater.argoproj.io/v1alpha1 ... Note the API **group** is `argocd-image-updater.argoproj.io`, not `argoproj.io`."
+        },
+        {
+          "text": "spec.applicationRefs is present (required) with namePattern: payments-*",
+          "verdict": "pass",
+          "evidence": "applicationRefs:\n    - namePattern: \"payments-*\"                   # REQUIRED"
+        },
+        {
+          "text": "images[] entries use alias and imageName",
+          "verdict": "pass",
+          "evidence": "- alias: api\n          imageName: registry.example.com/payments/api"
+        },
+        {
+          "text": "Uses manifestTargets.helm (name/tag) for a Helm source, not manifestTargets.kustomize",
+          "verdict": "pass",
+          "evidence": "manifestTargets:\n            helm:\n              name: image.repository\n              tag: image.tag"
+        },
+        {
+          "text": "updateStrategy: semver set via commonUpdateSettings",
+          "verdict": "pass",
+          "evidence": "commonUpdateSettings:\n    updateStrategy: semver"
+        },
+        {
+          "text": "writeBackConfig.method: git with gitConfig.branch: main",
+          "verdict": "pass",
+          "evidence": "writeBackConfig:\n    method: git\n    gitConfig:\n      branch: main"
+        },
+        {
+          "text": "Warns that mismatching manifestTargets to the Application source type makes the updater silently write nothing",
+          "verdict": "pass",
+          "evidence": "the CR applies cleanly, the controller starts, logs look normal, and nothing is ever written back. Helm keys on a Kustomize source and the reverse are both silently ignored."
+        }
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Resource tracking method and sync policy for a shared cluster",
+      "expectations": [
+        {
+          "text": "Identifies the label-based tracking method as the likely cause — app.kubernetes.io/instance collides with other tools that set the same label",
+          "verdict": "pass",
+          "evidence": "Argo CD's `label` tracking method stamps `app.kubernetes.io/instance`, and nearly every Helm chart template sets that same label from `.Release.Name`."
+        },
+        {
+          "text": "Recommends resource.trackingMethod: annotation (argocd.argoproj.io/tracking-id), which avoids the collision, and notes it is the modern default",
+          "verdict": "partial",
+          "evidence": "Switch to annotation tracking — `argocd.argoproj.io/tracking-id`, which nothing else writes"
+        },
+        {
+          "text": "Mentions configuring this in argocd-cm (and on OpenShift via the ArgoCD CR rather than editing the ConfigMap directly)",
+          "verdict": "pass",
+          "evidence": "upstream guides tell you to set `resource.trackingMethod: annotation` in the `argocd-cm` ConfigMap. On OpenShift GitOps the operator owns that ConfigMap and reverts you... Set it on the `ArgoCD` CR."
+        },
+        {
+          "text": "Recommends ignoreDifferences for fields owned by other controllers (e.g. HPA-managed replicas) rather than fighting them with selfHeal",
+          "verdict": "pass",
+          "evidence": "jsonPointers:\n        - /spec/replicas                 # HPA owns this"
+        },
+        {
+          "text": "Does not recommend disabling selfHeal as the primary fix",
+          "verdict": "pass",
+          "evidence": "**Don't turn off `selfHeal` to make the noise stop.** It's the tempting fix and it's the wrong one"
+        }
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Secret management choice for a GitOps repo",
+      "expectations": [
+        {
+          "text": "Rejects plain Secrets in Git, and states that base64 is encoding not encryption — anyone with repo read access has the credential",
+          "verdict": "pass",
+          "evidence": "**`base64` is an encoding, not encryption.** `echo cGFzc3dvcmQxMjM= | base64 -d` is the entire attack."
+        },
+        {
+          "text": "Presents the real options with trade-offs: Sealed Secrets, External Secrets Operator, SOPS, and Vault (via CSI or ESO)",
+          "verdict": "partial",
+          "evidence": "| **External Secrets Operator** | ... | **Secrets Store CSI driver + Vault provider** | ... | **Sealed Secrets** |"
+        },
+        {
+          "text": "Notes that External Secrets Operator / Vault keep the secret out of Git entirely, whereas Sealed Secrets and SOPS commit an encrypted form",
+          "verdict": "partial",
+          "evidence": "Three options, all of which keep the *reference* in Git and the *value* out of it."
+        },
+        {
+          "text": "Mentions that Argo CD needs to be able to decrypt or resolve whichever mechanism is chosen",
+          "verdict": "partial",
+          "evidence": "The generated `Secret` does not exist until the ESO controller reconciles the `ExternalSecret`. A pod starting in the same sync wave will `CreateContainerConfigError`."
+        },
+        {
+          "text": "Does not simply say 'use Sealed Secrets' without stating why it fits or does not fit their situation",
+          "verdict": "pass",
+          "evidence": "**Sealed Secrets** is much less to run, but the controller's private key is now a single point of failure you must back up"
+        }
+      ]
+    },
+    {
+      "id": 16,
+      "name": "Choose a GitOps repository pattern",
+      "expectations": [
+        {
+          "text": "Compares the real options rather than asserting one — app-of-apps, ApplicationSet, monorepo, multi-repo, environment-branch — with trade-offs",
+          "verdict": "partial",
+          "evidence": "18 Applications is borderline — app-of-apps would survive it — but you'll add service 7 and env 4, and auto-discovery is what makes that a directory creation instead of a PR full of near-identical YAML."
+        },
+        {
+          "text": "Recommends ApplicationSet for the 6 services x 3 envs x 2 clusters fan-out instead of hand-maintained Application manifests, and explains that generators remove the per-combination manifest",
+          "verdict": "pass",
+          "evidence": "one **ApplicationSet with a git directory generator** per repo"
+        },
+        {
+          "text": "Separates platform/cluster addons from application workloads (different ownership, different review path, often a different AppProject)",
+          "verdict": "pass",
+          "evidence": "**`platform-config`** — cluster addons. Owned by the platform team, with its own Git access control and its own AppProject."
+        },
+        {
+          "text": "Addresses environment promotion explicitly — directory-per-env vs branch-per-env — and notes the trade-off rather than silently picking one",
+          "verdict": "pass",
+          "evidence": "**Do not use environment branches.** They're the obvious next step from where you are and they're the trap: branch drift between staging and prod is invisible until it bites"
+        },
+        {
+          "text": "Warns against targetRevision: HEAD for production regardless of pattern chosen",
+          "verdict": "fail",
+          "evidence": "absent"
+        },
+        {
+          "text": "Flags at least one anti-pattern relevant to their current layout (e.g. a flat directory of hand-edited Applications does not scale, or mixing platform and tenant resources in one AppProject)",
+          "verdict": "pass",
+          "evidence": "**one repo is carrying two different ownership boundaries**... Wildcards in `sourceRepos` or `destinations` are the single most common way an AppProject ends up decorative."
+        }
+      ]
+    },
+    {
+      "id": 17,
+      "name": "AppProject sync windows — allow/deny interaction and manualSync",
+      "expectations": [
+        {
+          "text": "Uses spec.syncWindows with kind: allow for the business-hours window and kind: deny for the change freeze",
+          "verdict": "pass",
+          "evidence": "- kind: allow\n      schedule: '0 8 * * 1-5' ... # 2. Friday-night change freeze ... - kind: deny"
+        },
+        {
+          "text": "Sets timeZone (e.g. America/New_York) rather than assuming the cron schedule is in local time — schedule is UTC by default",
+          "verdict": "pass",
+          "evidence": "timeZone: America/New_York"
+        },
+        {
+          "text": "Expresses the window as a cron schedule plus a duration, not a start/end time pair",
+          "verdict": "pass",
+          "evidence": "schedule: '0 8 * * 1-5'\n      duration: 10h"
+        },
+        {
+          "text": "States the combination rule correctly: with both allow and deny windows present, a sync must fall INSIDE an allow window AND OUTSIDE every deny window",
+          "verdict": "pass",
+          "evidence": "**Any active `deny` window wins.** Automated sync is blocked. ... Otherwise, **an active `allow` window** permits sync ... if allow windows exist but **none is currently active**, automated sync is blocked"
+        },
+        {
+          "text": "Sets manualSync: true on the deny window so on-call can still sync by hand during the freeze",
+          "verdict": "pass",
+          "evidence": "kind: deny ... manualSync: true          # REQUIRED for on-call to sync during the freeze"
+        },
+        {
+          "text": "Explains manualSync correctly as an escape hatch that PERMITS manual syncs the window would otherwise block — not as an additional restriction, and not as something that enables automated sync",
+          "verdict": "pass",
+          "evidence": "`manualSync` is an escape hatch, not an extra restriction — the CRD defines it as *\"enables manual syncs when they would otherwise be blocked.\"*"
+        },
+        {
+          "text": "Does not claim manualSync: false adds protection beyond the window's default behaviour (false is the default and blocks manual syncs too)",
+          "verdict": "pass",
+          "evidence": "Setting `manualSync: false` there (as a naive reading suggests, and as the \"stricter\" instinct suggests) gives you a freeze that locks out the people meant to break it"
+        }
+      ]
+    },
+    {
+      "id": 18,
+      "name": "AppProject resource allow/deny lists and sourceNamespaces scoping",
+      "expectations": [
+        {
+          "text": "sourceRepos lists the specific repo URL, not '*'",
+          "verdict": "pass",
+          "evidence": "sourceRepos:\n    - https://github.com/acme/payments.git"
+        },
+        {
+          "text": "destinations scope both namespaces to the in-cluster server (https://kubernetes.default.svc), not server: '*'",
+          "verdict": "pass",
+          "evidence": "destinations:\n    - server: https://kubernetes.default.svc\n      namespace: payments-dev\n    - server: https://kubernetes.default.svc\n      namespace: payments-prod"
+        },
+        {
+          "text": "Uses clusterResourceWhitelist for the cluster-scoped allowance, listing Namespace (group \"\") — and does NOT use a namespace-scoped list for this",
+          "verdict": "pass",
+          "evidence": "clusterResourceWhitelist:\n    - group: ''\n      kind: Namespace"
+        },
+        {
+          "text": "Uses namespaceResourceBlacklist for ResourceQuota and LimitRange — correctly distinguishing namespace-scoped denial from the cluster-scoped whitelist",
+          "verdict": "pass",
+          "evidence": "Both are core-group (group: '') and namespaced — they belong here, not in clusterResourceBlacklist."
+        },
+        {
+          "text": "Sets spec.sourceNamespaces to include payments-dev so Application CRs outside the Argo CD namespace are permitted by this project",
+          "verdict": "pass",
+          "evidence": "sourceNamespaces:\n    - payments-dev"
+        },
+        {
+          "text": "Notes that sourceNamespaces on the AppProject is not sufficient on its own — the Argo CD instance must also be configured to watch that namespace (application-namespaces / .spec.sourceNamespaces on the ArgoCD CR)",
+          "verdict": "pass",
+          "evidence": "On OpenShift GitOps that is `ArgoCD.spec.sourceNamespaces` on the operator CR (`argoproj.io/v1beta1`)"
+        },
+        {
+          "text": "Does not use a wildcard in clusterResourceWhitelist (no '*'/'*'), which would defeat the restriction",
+          "verdict": "pass",
+          "evidence": "Cluster-scoped: Namespace and nothing else.\n  # A non-empty whitelist is already deny-by-default for everything absent."
+        }
+      ]
+    },
+    {
+      "id": 19,
+      "name": "AppProject role scoping and orphaned resource monitoring",
+      "expectations": [
+        {
+          "text": "Defines spec.roles with a named role and policy lines, not cluster-level RBAC",
+          "verdict": "pass",
+          "evidence": "roles:\n    - name: developer\n      description: Payments team — read and sync, no delete"
+        },
+        {
+          "text": "Policy lines use the p, proj:<project>:<role>, applications, <action>, <project>/<app>, allow form — scoped to this project, not '*'",
+          "verdict": "pass",
+          "evidence": "p, proj:payments:developer, applications, get, payments/*, allow"
+        },
+        {
+          "text": "Grants get and sync actions and does NOT grant delete",
+          "verdict": "pass",
+          "evidence": "- p, proj:payments:developer, applications, sync, payments/*, allow\n        # Explicit denials\n        - p, proj:payments:developer, applications, delete, payments/*, deny"
+        },
+        {
+          "text": "Binds the role to a group via the role's groups list (OIDC/SSO group), rather than assuming a Kubernetes RoleBinding grants Argo CD UI access",
+          "verdict": "pass",
+          "evidence": "groups:\n        - payments-team            # must match the group claim your SSO emits"
+        },
+        {
+          "text": "Enables spec.orphanedResources with warn: true",
+          "verdict": "pass",
+          "evidence": "orphanedResources:\n    warn: true"
+        },
+        {
+          "text": "Uses the orphanedResources ignore list to exclude ServiceAccount and ConfigMap kinds, rather than disabling orphaned-resource monitoring entirely",
+          "verdict": "partial",
+          "evidence": "Name-scoped entries are deliberate. Ignoring `kind: ServiceAccount` and `kind: ConfigMap` wholesale would silence exactly the orphans you want to see"
+        },
+        {
+          "text": "Does not conflate Argo CD project RBAC with Kubernetes RBAC — states that project roles govern access within Argo CD, not cluster permissions",
+          "verdict": "partial",
+          "evidence": "An AppProject role is additive to `argocd-rbac-cm` and only binds to **OIDC/SSO groups** (`groups:`) or project JWT tokens — not to local Argo CD users."
+        }
+      ]
+    }
+  ]
+}
