@@ -29,9 +29,9 @@ and following the workflow defined in it. The skills are located at these paths
 relative to the repository root:
 
 - `.skills/gitops/argo-knowledge/SKILL.md` — Argo concepts, YAML manifest generation, GitOps patterns
-- `.skills/gitops/argo-cluster-debug/SKILL.md` — Live cluster debugging and troubleshooting
+- `.skills/gitops/argo-cluster-debug/SKILL.md` — Live cluster debugging, plus Argo Rollouts runtime control (promote / abort / retry)
 - `.skills/gitops/argo-repo-audit/SKILL.md` — Repository auditing for best practices and security
-- `.skills/gitops/argo-operations/SKILL.md` — Install, deploy, promote, upgrade Argo resources (writes to cluster)
+- `.skills/gitops/argo-performance-tuning/SKILL.md` — Diagnose and tune Argo CD performance and scale
 
 Read the skill file first, then follow its workflow phases step by step.
 

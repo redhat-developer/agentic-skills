@@ -60,6 +60,11 @@ for path in $SKILL_PATHS; do
   grep -q "$skill"                     README.md                       || note "README.md mention"
   grep -qe "^ *- $skill\$"             .github/workflows/evals.yml     || note ".github/workflows/evals.yml choice option"
   grep -qe "^ *- skill: $skill\$"      .github/workflows/evals.yml     || note ".github/workflows/evals.yml matrix entry"
+  # agents/codex/argocd.toml was never checked here, and argo-performance-tuning was
+  # missing from it from the day it was added — the repo's strongest skill, absent from
+  # one runtime, with every other guard green.
+  grep -q "skills/$product/$skill/SKILL.md" agents/codex/argocd.toml || note "agents/codex/argocd.toml [[skills.config]] entry"
+  grep -q "skills/$product/$skill/SKILL.md" agents/github-copilot/argocd.agent.md || note "agents/github-copilot/argocd.agent.md skill list"
 done
 
 # The README badge and the Benchmarks notice cite an eval count. The banner drifted two

@@ -74,6 +74,36 @@ of the investigation, not just finding the first error.
 - Analyze `.status.conditions` as the primary diagnostic signal for every Argo CRD
 - Complete the full workflow — don't stop after finding one issue, cascading problems are common
 
+## Writes: Rollout control only
+
+Diagnosis is read-only. This skill performs exactly one class of write — **Argo Rollouts
+runtime control: promote, abort, retry** — because a Rollout's progression is runtime
+state that no controller owns and Git cannot express. Pausing at step 2 awaiting
+promotion is not drift; it is the Rollout doing its job.
+
+Everything else stays out:
+
+| Request | Why not, and what to do |
+|---|---|
+| Create/edit an Application, ApplicationSet, AppProject | Desired state belongs in Git. Hand back the manifest to commit; applying it directly produces the drift Argo CD exists to prevent. |
+| Install, configure or upgrade Argo CD | The OpenShift GitOps Operator's job. Point at the Subscription/CSV. |
+| Rotate repository credentials | Belongs in External Secrets Operator / Vault / Sealed Secrets — see `argo-knowledge`'s `references/openshift-gitops-operator.md`. |
+| Tune performance settings | → `argo-performance-tuning` |
+
+**Every write — including a Rollout promote, abort or retry, and any delete — follows
+the shared protocol in [`../write-safety.md`](../write-safety.md): Generate → Preview →
+Blast radius → Confirm → Verify.** Destructive operations additionally require the user
+to type the resource name; "yes" alone is not sufficient.
+
+Verify a Rollout action by its **resulting phase**, not by the command returning:
+
+```bash
+kubectl argo rollouts get rollout <name> -n <ns>
+# or, with no plugin:
+$KCTL get rollouts.argoproj.io <name> -n <ns> \
+  -o jsonpath='phase={.status.phase} step={.status.currentStepIndex} msg={.status.message}{"\n"}'
+```
+
 ## Cluster Context
 
 - If the user specifies a cluster context, switch to it:

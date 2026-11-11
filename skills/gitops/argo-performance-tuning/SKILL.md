@@ -22,10 +22,11 @@ compatibility: Requires kubectl or oc; optionally argocd CLI, yq
 Diagnose and tune Argo CD / OpenShift GitOps performance and scalability — from a single
 sluggish instance to multi-cluster, thousands-of-Applications deployments.
 
-This skill complements `argo-cluster-debug` (diagnoses *broken* resources) and `argo-operations`
-(installs/deploys/maintains). It owns the "it works but it's slow / resource-hungry / falling
-over at scale" problem space, and reuses the **Generate → Preview → Confirm** safety model from
-`argo-operations` for any change that touches a live cluster.
+This skill complements `argo-cluster-debug`, which diagnoses *broken* resources and owns
+Argo Rollouts runtime control. It owns the "it works but it's slow / resource-hungry /
+falling over at scale" problem space, and follows the shared write protocol in
+[`../write-safety.md`](../write-safety.md) — **Generate → Preview → Blast radius →
+Confirm → Verify** — for any change that touches a live cluster.
 
 ## How This Skill Works
 
@@ -76,6 +77,16 @@ almost always an Operator-managed **`ArgoCD` CR** (`argoproj.io/v1beta1`), so se
 belong under its `spec` (`spec.controller.processors`, `spec.repo.env`, …) — **not** in
 `argocd-cmd-params-cm`, where the Operator will overwrite them on the next reconcile.
 Confirm with `$KCTL get argocd -A` during Phase 1 before generating any patch.
+
+**Always state both placements, even when you know which install you are on.** Every
+setting in `references/tuning-settings.md` carries a *Standalone location* and an
+*Operator (ArgoCD CR) location*, and they differ — `ARGOCD_REPO_SERVER_PARALLELISM_LIMIT`
+is `spec.repo.env` on the Operator but `argocd-cmd-params-cm` key
+`reposerver.parallelism.limit` (or an env var on the `argocd-repo-server` Deployment)
+standalone; `resource.exclusions` is the dedicated `spec.resourceExclusions` field on the
+Operator but an `argocd-cm` key standalone. Giving only the Operator path is a wrong
+answer for every reader not on the Operator, and it is the most common way this skill's
+output fails review. Read both columns out of the table; do not infer one from the other.
 
 ## Phase 1: Assess
 
@@ -187,8 +198,10 @@ note any ordering dependency, since enabling a setting while a prerequisite is b
 create the very problem being reported.
 
 
-Every change that touches the live cluster follows the same 3-step protocol as
-`argo-operations`:
+Every change that touches the live cluster follows the shared protocol in
+[`../write-safety.md`](../write-safety.md). The steps below are that protocol applied to
+tuning changes; the shared file is authoritative, including the blast-radius and verify
+steps and the typed-name requirement for destructive operations:
 
 1. **Generate** — produce the exact YAML patch or env var change, in a fenced code block. For
    the OpenShift GitOps Operator, show the correct `spec` path (`spec.repo.env`,
@@ -237,6 +250,9 @@ and Git provider rate-limit headers. Recommend changing **one** major setting at
 ## Related Skills
 
 - **Resource broken, not just slow?** → `argo-cluster-debug`
-- **Installing, deploying, or general day-2 ops?** → `argo-operations` (its `day2-operations.md`
-  covers basic replica/resource scaling; this skill covers the deeper env-var/ConfigMap tuning)
+- **Installing, configuring or upgrading Argo CD?** → not an agent task on OpenShift; the
+  GitOps Operator owns it. Check the Subscription and CSV.
+- **Authoring Applications, ApplicationSets or AppProjects?** → commit them to Git; Argo CD
+  reconciles. `argo-knowledge` covers how to write them.
+- **Promoting, aborting or retrying a Rollout?** → `argo-cluster-debug`
 - **"What is X" / generate manifests?** → `argo-knowledge`

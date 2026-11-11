@@ -29,4 +29,5 @@ path = ".agents/skills/gitops/argo-cluster-debug/SKILL.md"
 path = ".agents/skills/gitops/argo-repo-audit/SKILL.md"
 
 [[skills.config]]
-path = ".agents/skills/gitops/argo-operations/SKILL.md"
+path = ".agents/skills/gitops/argo-performance-tuning/SKILL.md"
+

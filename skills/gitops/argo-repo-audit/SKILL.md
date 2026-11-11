@@ -201,14 +201,60 @@ For each applicable category:
 For each applicable check:
 - Status (Pass / Fail / N/A)
 - Evidence (file path, line, value)
-- Risk level (Critical / High / Medium / Low)
+- Risk level — **use the three levels below and no others**
 
 #### 6. Recommendations
 
-Prioritized list:
-- **Critical** — Security vulnerabilities, plain-text secrets, wildcard permissions in production
-- **Warning** — Missing best practices that increase operational risk
-- **Info** — Suggestions for improved maintainability or performance
+One severity vocabulary, used everywhere in the report:
+
+- **Critical** — Security vulnerabilities: plain-text secrets, wildcard permissions,
+  privilege escalation. Something an attacker or a mistake can exploit *now*.
+- **Warning** — Operational gaps: missing best practices that increase the chance or
+  cost of an incident, but are not themselves a vulnerability.
+- **Info** — Maintainability and performance suggestions.
+
+**Do not inflate an operational gap into a security finding.** The two most common
+mis-ratings:
+
+| Finding | Severity | Why not Critical |
+|---|---|---|
+| No `syncPolicy` | **Warning** | Manual-only sync, no drift correction, no retry. An operational gap — nothing is exposed by it. |
+| `targetRevision: HEAD` | **Warning**, or **Critical** only with `prune: true` **and** `selfHeal: true` on a production destination | HEAD alone means unreviewed commits reach the cluster on the next sync. With prune and selfHeal it also auto-deploys and reverts manual rollback, which is a genuinely different blast radius — say which case you found. |
+
+Say *why* a finding sits where it does. "Warning — operational gap, not a security
+vulnerability" is a complete justification and is worth one clause.
+
+**Severity floor for conditional observations: Info, not Warning.** A finding is
+*conditional* when whether it matters depends on something this audit cannot see — the
+cluster, the AppProject, the team's intent. These are worth mentioning and are **not**
+Warnings:
+
+| Observation | Why it is Info |
+|---|---|
+| No `CreateNamespace=true` sync option | Only matters if the destination namespace does not already exist, which is cluster state. |
+| `project: default` | Only a problem if `default` is unrestricted — and the AppProject may not be in this repo. |
+| `ignoreDifferences` without `RespectIgnoreDifferences=true` | A real gap, but it changes diffing behaviour, not security or availability. |
+| Missing `retry` / backoff | Degrades recovery from transient failures; nothing is exposed or broken. |
+
+Reserve **Warning** for a gap that is a problem *in this repo as written*, independent of
+anything you cannot see. If the sentence needs an "if", it is Info.
+
+**Report what is there. Do not pad.** The checklist exists so you do not *miss* things,
+not so that every check must yield a finding. A repo with one real problem gets one
+finding; the correct report for the rest is that it passed. Padding a thin report with
+speculative or stylistic observations is a false positive, and it costs the reader more
+than the silence would have — they now have to re-derive which finding was the real one.
+
+Three habits that produce false positives here, all worth resisting:
+
+- Restating one problem as several findings (missing `syncPolicy` is **one** finding, not
+  separate findings for automated, prune, selfHeal and retry).
+- Flagging a deliberate choice as a defect without evidence it is unintended — a pinned
+  `targetRevision` in a non-production Application is not a finding.
+- Reporting the absence of something the repo never claimed to use. A repo with no
+  `ApplicationSet` does not have an ApplicationSet problem.
+
+If a check passes, "Pass" is the finding. Say it and move on.
 
 **State the impact of acting on each finding, not just its severity.** Severity says how
 bad it is; impact says what changes when someone fixes it. These are repo findings, so
