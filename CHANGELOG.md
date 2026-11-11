@@ -29,6 +29,21 @@ something, or acts on runtime state no controller owns. Six skills become four.
   against `argoproj-labs/gitops-promoter` `constants.go`. Two evals had been grading *for*
   the broken value, so the suite rewarded a PromotionStrategy that would hang.
 
+### Fixed — fixture arming, and two runtimes missing a skill
+
+- `tests/argo-cluster-debug/fixtures/setup.sh` armed eval 1 by drifting podinfo's live
+  image and relied on `selfHeal: false` to hold it. That is not sufficient: with
+  `automated` still set, Argo CD re-synced and restored the good image within ~30s,
+  leaving podinfo `Synced/Healthy` and eval 1 measuring nothing. It now removes
+  `syncPolicy.automated` before drifting, and **verifies every fixture state at the end**,
+  exiting non-zero if any failed to arm. Printing a state table is not checking it — a
+  fixture that silently fails to arm produces a confident, meaningless score.
+- `scripts/check-skill-registration.sh` never checked either of the non-Claude agent
+  definitions. `argo-performance-tuning` — the repo's strongest skill — was missing from
+  **both** `agents/codex/argocd.toml` and `agents/github-copilot/argocd.agent.md`, from
+  the day it was added, with every other guard green. Both are now checked, and the
+  second gap was found by the new check within seconds of adding it.
+
 ### Added — benchmark tooling, because the old process was lost
 
 Runs 1-8 were produced by hand and nothing in the repo could reproduce them. When scope

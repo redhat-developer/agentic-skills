@@ -82,8 +82,17 @@ done
 
 echo "==> arming eval 1: drift podinfo's live image so it is OutOfSync AND Degraded"
 # One action produces both symptoms: the live spec diverges from git (OutOfSync)
-# and the tag is unpullable (ImagePullBackOff -> Degraded). selfHeal is off in the
-# Application, so Argo CD will not revert it.
+# and the tag is unpullable (ImagePullBackOff -> Degraded).
+#
+# Disable automated sync FIRST. An earlier version relied on `selfHeal: false` alone
+# and that is not sufficient: with `automated` still set, Argo CD re-synced and put
+# the good image back within ~30 seconds, leaving podinfo Synced/Healthy. Eval 1 then
+# measured nothing — the exact failure this whole fixture file exists to prevent, and
+# it is silent, because the script completes and the Application looks fine.
+$KCTL patch applications.argoproj.io podinfo -n "$NS_ARGOCD" --type=json \
+  -p '[{"op":"remove","path":"/spec/syncPolicy/automated"}]' 2>/dev/null \
+  || echo "    (automated sync already absent)"
+
 dep=$($KCTL get deploy -n apps -o jsonpath='{.items[0].metadata.name}')
 container=$($KCTL get deploy "$dep" -n apps -o jsonpath='{.spec.template.spec.containers[0].name}')
 $KCTL set image -n apps "deploy/$dep" \
@@ -174,3 +183,45 @@ echo "--enable-progressive-syncs, which the operator does not set by default. En
 echo "it means editing the shared ArgoCD CR, so this script deliberately does not."
 echo "Eval 5 therefore still measures the inert case — which is itself the realistic"
 echo "OpenShift GitOps failure mode, and what the skill documents."
+
+# ---------------------------------------------------------------------------
+# Verify the fixtures actually reached the states the evals assert.
+#
+# Printing a state table is not the same as checking it. A fixture that failed
+# to arm leaves the eval measuring a healthy resource, both arms score the same,
+# and the run looks successful — so this exits non-zero instead, loudly.
+#
+# Known flake: something restores the podinfo deployment image within ~15s while
+# other agents are working the cluster. Argo auto-sync, agent writes and the
+# other fixture Applications have all been ruled out and the mechanism is still
+# unidentified. Do not arm fixtures while an eval run is in flight, and re-run
+# this script if the check below fails.
+# ---------------------------------------------------------------------------
+echo
+echo "==> verifying fixture states"
+fail=0
+check() {  # check <description> <actual> <expected>
+  if [ "$2" = "$3" ]; then
+    echo "    [OK]   $1 = $3"
+  else
+    echo "    [FAIL] $1 = '${2:-<empty>}', expected '$3'"
+    fail=1
+  fi
+}
+app_health() { $KCTL get applications.argoproj.io "$1" -n "$NS_ARGOCD" -o jsonpath='{.status.health.status}' 2>/dev/null; }
+app_sync()   { $KCTL get applications.argoproj.io "$1" -n "$NS_ARGOCD" -o jsonpath='{.status.sync.status}'   2>/dev/null; }
+
+check "eval 1  podinfo sync"            "$(app_sync podinfo)"          "OutOfSync"
+check "eval 1  podinfo health"          "$(app_health podinfo)"        "Degraded"
+check "eval 8  billing-service health"  "$(app_health billing-service)" "Suspended"
+check "eval 9  platform-ui sync"        "$(app_sync platform-ui)"      "Unknown"
+check "eval 6  checkout-api phase"      "$($KCTL get rollout checkout-api -n prod -o jsonpath='{.status.phase}' 2>/dev/null)" "Paused"
+
+if [ "$fail" -ne 0 ]; then
+  echo
+  echo "FIXTURES NOT ARMED. Do not run the evals against this cluster — the affected"
+  echo "evals would measure a resource in the wrong state and report a meaningless"
+  echo "score. Re-run this script with nothing else touching the cluster."
+  exit 1
+fi
+echo "    all fixture states verified"

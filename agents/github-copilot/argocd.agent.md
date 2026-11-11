@@ -31,6 +31,7 @@ relative to the repository root:
 - `.skills/gitops/argo-knowledge/SKILL.md` — Argo concepts, YAML manifest generation, GitOps patterns
 - `.skills/gitops/argo-cluster-debug/SKILL.md` — Live cluster debugging, plus Argo Rollouts runtime control (promote / abort / retry)
 - `.skills/gitops/argo-repo-audit/SKILL.md` — Repository auditing for best practices and security
+- `.skills/gitops/argo-performance-tuning/SKILL.md` — Diagnose and tune Argo CD performance and scale
 
 Read the skill file first, then follow its workflow phases step by step.
 
