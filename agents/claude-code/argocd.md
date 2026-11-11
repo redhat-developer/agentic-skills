@@ -12,6 +12,9 @@ description: >
 skills:
   - argo-knowledge
   - argo-cluster-debug
+  - argo-app-health-triage
+  - argo-app-sync-triage
+  - argo-operator
   - argo-repo-audit
   - argo-operations
   - argo-performance-tuning

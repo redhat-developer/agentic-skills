@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/OpenShift-layered%20products-EE0000.svg" alt="OpenShift">
   <img src="https://img.shields.io/badge/products-1%20shipping%20%7C%203%20open-8A63D2.svg" alt="1 product shipping, 3 open">
   <img src="https://img.shields.io/badge/skills-6-8A63D2.svg" alt="6 skills">
-  <img src="https://img.shields.io/badge/evals-86-3FB950.svg" alt="86 evals">
+  <img src="https://img.shields.io/badge/evals-114-3FB950.svg" alt="114 evals">
 </p>
 
 <p align="center">
@@ -157,6 +157,9 @@ The agent automatically selects the right skill based on what you ask:
  Ask a question ────► argo-knowledge           "How do I...?"
  Audit a repo ──────► argo-repo-audit          "Audit this repo"
  Debug a cluster ───► argo-cluster-debug       "Why is X failing?"
+ Health is bad ─────► argo-app-health-triage   "Why is this app Degraded?"
+ Sync is bad ───────► argo-app-sync-triage     "Why is this app OutOfSync?"
+ Operator owns it ──► argo-operator            "Sync says forbidden / app is ignored"
  Make a change ─────► argo-operations          "Install / create / promote / upgrade..."
  Tune performance ──► argo-performance-tuning  "Why is this slow at scale?"
  Onboard a team ────► argo-team-onboard        "Set up a new team on Argo CD"
@@ -499,7 +502,7 @@ no measured baseline is a guess, and this repo does not publish guesses — incl
 the answer is unflattering.
 
 <details open>
-<summary><b>🔵 GitOps</b> — 6 skills, 587 expectations per condition</summary>
+<summary><b>🔵 GitOps</b> — 9 skills, 6 measured over 587 expectations per condition</summary>
 
 | Skill | with-skill | baseline | delta | |
 |-------|-----------:|---------:|------:|---|
@@ -510,6 +513,16 @@ the answer is unflattering.
 | [`argo-team-onboard`](benchmarks/argo-team-onboard.md) | 89.4% | 84.6% | +4.8 | *unresolved* |
 | [`argo-knowledge`](benchmarks/argo-knowledge.md) | 98.5% | 93.9% | +4.5 | *unresolved* |
 | **Weighted overall** | **95.8%** | **82.2%** | **+13.6** | |
+
+Three skills ship with eval suites but **no baseline run**, so they are absent from the
+table above rather than listed with a blank delta. By this repo's own bar they are
+unproven until measured:
+
+| Skill | evals | status |
+|-------|------:|--------|
+| [`argo-operator`](benchmarks/argo-operator.md) | 11 | not yet measured |
+| [`argo-app-sync-triage`](benchmarks/argo-app-sync-triage.md) | 9 | not yet measured |
+| [`argo-app-health-triage`](benchmarks/argo-app-health-triage.md) | 8 | not yet measured |
 
 **The delta tracks how product-specific a skill is.** Performance tuning — exact setting
 names, defaults the operator silently overrides, which CR field actually wins — gains
