@@ -12,7 +12,7 @@ ROLLOUTS_MANAGER_VERSION := v0.10.0
 IMAGE_UPDATER_VERSION := v1.3.1
 ROLLOUTS_VERSION := v1.8.2
 
-.PHONY: help check-numbers baseline with-skill grade hooks hooks-uninstall scan-secrets history history-check download-schemas clean-schemas test-discover test-validate test-registration test-expectations score score-json score-compare eval eval-knowledge eval-repo-audit eval-cluster-debug eval-performance-tuning
+.PHONY: help check-numbers baseline with-skill grade hooks hooks-uninstall scan-secrets history history-check download-schemas clean-schemas test-discover test-validate test-registration test-expectations score score-json score-compare eval eval-knowledge eval-repo-audit eval-cluster-debug eval-app-health-triage eval-app-sync-triage eval-operator eval-performance-tuning
 
 # Fetch a CRD schema from an arbitrary URL, selecting the STORAGE version rather than
 # versions[0] — the ArgoCD CR serves both v1alpha1 and v1beta1 and we want v1beta1.
@@ -113,7 +113,7 @@ test-validate: ## Run validation script on test fixtures
 	$(VALIDATE_SCRIPT) -d $(TEST_DIR)/app-of-apps
 	$(VALIDATE_SCRIPT) -d $(TEST_DIR)/applicationset
 
-eval: eval-knowledge eval-repo-audit eval-cluster-debug eval-performance-tuning ## Run all skill evals
+eval: eval-knowledge eval-repo-audit eval-cluster-debug eval-app-health-triage eval-app-sync-triage eval-operator eval-performance-tuning ## Run all skill evals
 
 # --- two-arm benchmarking (scripts/run_eval_arm.py + scripts/grade_eval.py) -------
 # The eval-* targets above run the with-skill arm only and self-score; they are a
@@ -142,7 +142,6 @@ grade: ## Blind-grade both arms into benchmarks/results/ (SKILL=, RUN=, LABEL=)
 	@python3 scripts/grade_eval.py --skill $(SKILL) --run-id $(RUN) --model $(MODEL) \
 		--run-label "$(LABEL)"
 
-
 eval-knowledge: ## Run argo-knowledge evals
 	@echo "Running argo-knowledge evals..."
 	@claude --print --dangerously-skip-permissions \
@@ -164,6 +163,30 @@ eval-cluster-debug: ## Run argo-cluster-debug evals (requires live cluster)
 	@claude --print --dangerously-skip-permissions \
 		"Read skills/gitops/argo-cluster-debug/evals/evals.json. For each eval: \
 		1. Spawn a sub-agent that reads skills/gitops/argo-cluster-debug/SKILL.md first, then follows the debug workflow. \
+		2. Score the output against the expectations array. \
+		Report a scorecard table: eval id, passed/total, and list any failed expectations."
+
+eval-app-health-triage: ## Run argo-app-health-triage evals (requires live cluster)
+	@echo "Running argo-app-health-triage evals (requires kubectl access)..."
+	@claude --print --dangerously-skip-permissions \
+		"Read skills/gitops/argo-app-health-triage/evals/evals.json. For each eval: \
+		1. Spawn a sub-agent that reads skills/gitops/argo-app-health-triage/SKILL.md first, then answers the eval prompt following the skill workflow. \
+		2. Score the output against the expectations array. \
+		Report a scorecard table: eval id, passed/total, and list any failed expectations."
+
+eval-app-sync-triage: ## Run argo-app-sync-triage evals (requires live cluster)
+	@echo "Running argo-app-sync-triage evals (requires kubectl access)..."
+	@claude --print --dangerously-skip-permissions \
+		"Read skills/gitops/argo-app-sync-triage/evals/evals.json. For each eval: \
+		1. Spawn a sub-agent that reads skills/gitops/argo-app-sync-triage/SKILL.md first, then answers the eval prompt following the skill workflow. \
+		2. Score the output against the expectations array. \
+		Report a scorecard table: eval id, passed/total, and list any failed expectations."
+
+eval-operator: ## Run argo-operator evals (requires live cluster)
+	@echo "Running argo-operator evals (requires kubectl access)..."
+	@claude --print --dangerously-skip-permissions \
+		"Read skills/gitops/argo-operator/evals/evals.json. For each eval: \
+		1. Spawn a sub-agent that reads skills/gitops/argo-operator/SKILL.md first, then answers the eval prompt following the skill workflow. \
 		2. Score the output against the expectations array. \
 		Report a scorecard table: eval id, passed/total, and list any failed expectations."
 

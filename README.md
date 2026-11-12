@@ -7,8 +7,8 @@
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
   <img src="https://img.shields.io/badge/OpenShift-layered%20products-EE0000.svg" alt="OpenShift">
   <img src="https://img.shields.io/badge/products-1%20shipping%20%7C%203%20open-8A63D2.svg" alt="1 product shipping, 3 open">
-  <img src="https://img.shields.io/badge/skills-4-8A63D2.svg" alt="4 skills">
-  <img src="https://img.shields.io/badge/evals-64-3FB950.svg" alt="64 evals">
+  <img src="https://img.shields.io/badge/skills-7-8A63D2.svg" alt="7 skills">
+  <img src="https://img.shields.io/badge/evals-92-3FB950.svg" alt="92 evals">
 </p>
 
 <p align="center">
@@ -113,7 +113,7 @@ you run.
 
 | Product | Covers | Skills | Status |
 |---------|--------|-------:|--------|
-| [**gitops**](skills/gitops) | Argo CD, Argo Rollouts | **4** | shipping, benchmarked |
+| [**gitops**](skills/gitops) | Argo CD, Argo Rollouts | **7** | shipping, benchmarked |
 | [**servicemesh**](skills/servicemesh) | Istio | — | [open for contributions](docs/adding-a-skill.md) |
 | [**serverless**](skills/serverless) | Knative | — | [open for contributions](docs/adding-a-skill.md) |
 | [**pipelines**](skills/pipelines) | Tekton | — | [open for contributions](docs/adding-a-skill.md) |
@@ -128,7 +128,7 @@ Evals are required — the guide explains the bar and why it is set where it is.
 Skills are grouped by product. Expand the one you use.
 
 <details open>
-<summary><b>🔵 GitOps</b> — Argo CD, Argo Rollouts · <b>4 skills</b>, benchmarked</summary>
+<summary><b>🔵 GitOps</b> — Argo CD, Argo Rollouts · <b>7 skills</b>, 4 benchmarked</summary>
 
 > **Scope — Red Hat OpenShift GitOps.** These skills cover Argo CD and Argo Rollouts as
 > shipped and supported by the OpenShift GitOps operator, including the operator-managed
@@ -157,6 +157,9 @@ The agent automatically selects the right skill based on what you ask:
  Ask a question ────► argo-knowledge           "How do I...?"
  Audit a repo ──────► argo-repo-audit          "Audit this repo"
  Debug a cluster ───► argo-cluster-debug       "Why is X failing?"
+ Health is bad ─────► argo-app-health-triage   "Why is this app Degraded?"
+ Sync is bad ───────► argo-app-sync-triage     "Why is this app OutOfSync?"
+ Operator owns it ──► argo-operator            "Sync says forbidden / app is ignored"
  Promote a rollout ─► argo-cluster-debug       "Promote / abort / retry the canary"
  Tune performance ──► argo-performance-tuning  "Why is this slow at scale?"
 ```
@@ -339,7 +342,7 @@ no measured baseline is a guess, and this repo does not publish guesses — incl
 the answer is unflattering.
 
 <details open>
-<summary><b>🔵 GitOps</b> — 4 skills, re-measurement in progress</summary>
+<summary><b>🔵 GitOps</b> — 7 skills, 4 measured, re-measurement in progress</summary>
 
 > **Run 9 (2026-11-10) — measured with new tooling, and not comparable to runs 1–8.**
 > The process that produced the earlier runs was undocumented and could not be

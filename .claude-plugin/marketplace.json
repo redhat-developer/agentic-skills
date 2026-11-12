@@ -18,6 +18,9 @@
         "./skills/gitops/argo-knowledge",
         "./skills/gitops/argo-repo-audit",
         "./skills/gitops/argo-cluster-debug",
+        "./skills/gitops/argo-app-health-triage",
+        "./skills/gitops/argo-app-sync-triage",
+        "./skills/gitops/argo-operator",
         "./skills/gitops/argo-performance-tuning"
       ],
       "agents": [

@@ -12,6 +12,9 @@ on:
           - argo-knowledge
           - argo-repo-audit
           - argo-cluster-debug
+          - argo-app-health-triage
+          - argo-app-sync-triage
+          - argo-operator
           - argo-performance-tuning
       model:
         description: 'Model to use'
@@ -37,6 +40,12 @@ jobs:
           - skill: argo-repo-audit
             needs_cluster: false
           - skill: argo-cluster-debug
+            needs_cluster: true
+          - skill: argo-app-health-triage
+            needs_cluster: true
+          - skill: argo-app-sync-triage
+            needs_cluster: true
+          - skill: argo-operator
             needs_cluster: true
           - skill: argo-performance-tuning
             needs_cluster: true
