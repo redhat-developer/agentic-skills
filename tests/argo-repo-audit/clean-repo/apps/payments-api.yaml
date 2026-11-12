@@ -22,6 +22,11 @@ spec:
     syncOptions:
       - ServerSideApply=true
       - CreateNamespace=false
+      # Required alongside the ignoreDifferences block below: with ServerSideApply
+      # enabled, Argo CD only honours ignoreDifferences during diffing if this is set.
+      # Without it this "clean" fixture carries a real best-practice gap, and a correct
+      # audit has to report one finding — which the zero-findings eval scores as a miss.
+      - RespectIgnoreDifferences=true
     retry:
       limit: 5
       backoff:

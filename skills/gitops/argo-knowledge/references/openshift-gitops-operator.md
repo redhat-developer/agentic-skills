@@ -218,8 +218,9 @@ On the `ArgoCD` side each entry requires both `name` and `allowManagedBy`.
   namespace. Object names, the exact verbs each Role grants, and the diagnosis of a
   missing grant are in `skills/gitops/argo-operator` — this file stays the CR field
   reference.
-- Relevant to onboarding: this is how a tenant namespace gets attached to a central Argo
-  CD instance. See `skills/gitops/argo-team-onboard`.
+- This is how a tenant namespace gets attached to a central Argo CD instance. The
+  `NamespaceManagement` CR and the namespace label are both desired state — commit them
+  to Git and let Argo CD reconcile them rather than applying them by hand.
 
 ---
 
@@ -357,3 +358,99 @@ The recurring question when something will not stay changed:
 **The general rule on OpenShift GitOps: if the operator owns the resource, edit the CR,
 not the resource.** A direct edit applies cleanly, survives until the next reconcile, and
 then vanishes — which reads as a mysterious regression rather than a configuration error.
+
+## Repository credentials — where they live, and who should rotate them
+
+Argo CD stores repository credentials as labelled Secrets in the Argo CD namespace, not
+in the `ArgoCD` CR. Two labels, and the difference matters:
+
+| Label | Scope |
+|---|---|
+| `argocd.argoproj.io/secret-type: repository` | One specific repo, matched on its `url` key |
+| `argocd.argoproj.io/secret-type: repo-creds` | A URL *prefix* — credentials inherited by every repo underneath it |
+
+```bash
+# What exists, without printing any credential material
+kubectl get secrets -n "$NS" \
+  -l 'argocd.argoproj.io/secret-type in (repository,repo-creds)' \
+  -o custom-columns='NAME:.metadata.name,TYPE:.metadata.labels.argocd\.argoproj\.io/secret-type'
+
+# Which repo a given Secret is for — the url key is not sensitive
+kubectl get secret <name> -n "$NS" -o jsonpath='{.data.url}' | base64 -d
+```
+
+A `repo-creds` entry is the usual surprise during an incident: a repo that appears to
+have no credentials of its own is inheriting them from a prefix entry, so rotating the
+`repository` Secret alone changes nothing.
+
+### Rotation belongs in a secrets manager, not in an ad-hoc edit
+
+**Do not hand-rotate these Secrets, and do not ask an agent to.** Desired state belongs
+in Git and credential material belongs in a secrets-management system — the same
+position `argo-repo-audit` takes when it flags hardcoded secrets. Use **External Secrets
+Operator**, **Vault**, or **Sealed Secrets**: rotate at the provider, let the controller
+reconcile the Secret, and let Argo CD pick it up.
+
+The failure mode that makes this worth stating: a credential that applies cleanly and
+cannot authenticate. The apply succeeds, `kubectl` reports `configured`, and nothing is
+visibly wrong until every Application on that repo starts failing to refresh. A typo'd
+rotation locks Argo CD out of the repo it needs to self-heal from.
+
+### Verifying a rotation actually worked
+
+Whatever performed the rotation, the check is the same — and it is a connectivity test,
+not a diff. A Secret can be perfectly well-formed and still be rejected.
+
+```bash
+# Connection state as Argo CD sees it
+kubectl get secret <name> -n "$NS" \
+  -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/connection-status}{"\n"}'
+
+# Or, where the argocd CLI is available (it is not, in the agentic sandbox)
+argocd repo get <repo-url>
+```
+
+Then confirm an Application that uses the repo can still refresh:
+
+```bash
+kubectl patch applications.argoproj.io <app> -n "$NS" --type=merge \
+  -p '{"metadata":{"annotations":{"argocd.argoproj.io/refresh":"hard"}}}'
+kubectl get applications.argoproj.io <app> -n "$NS" \
+  -o jsonpath='{.status.conditions[?(@.type=="ComparisonError")].message}{"\n"}'
+```
+
+An empty `ComparisonError` after a hard refresh is the evidence that the credential
+works. Never echo token values into logs or transcripts while checking — the `url` and
+`connection-status` fields answer the question without exposing the secret.
+
+## Resource tracking — and why things show OutOfSync that nobody changed
+
+If Argo CD shares a cluster with Helm, a legacy deployment tool, or anything else that
+writes `app.kubernetes.io/instance`, Applications will report resources as `OutOfSync`
+with no change behind it. That label is the **old** tracking method and it collides.
+
+| `resource.trackingMethod` | Use when |
+|---|---|
+| `annotation` (modern default) | Almost always. Uses `argocd.argoproj.io/tracking-id`, which nothing else writes, so no collision. |
+| `label` | Only if you must select Argo-managed resources with a label selector. Collides with other tools. |
+| `annotation+label` | Migrating from `label` to `annotation` and something still needs the label. |
+
+Upstream this is an `argocd-cm` key:
+
+```yaml
+data:
+  resource.trackingMethod: annotation
+```
+
+**On OpenShift GitOps, do not edit `argocd-cm` directly** — the operator owns it and will
+revert you. Set it through the `ArgoCD` CR instead, the same rule as everything else on
+this page.
+
+Two follow-ons that matter when diagnosing phantom drift:
+
+- **Use `ignoreDifferences` for fields another controller owns** — HPA-managed
+  `spec.replicas` is the classic case. The other controller is not wrong; you are
+  diffing against a field you do not own.
+- **Do not reach for disabling `selfHeal` as the fix.** That suppresses the symptom and
+  gives up drift correction everywhere else. Fix the tracking method or scope the
+  `ignoreDifferences`; `selfHeal` is not the problem.

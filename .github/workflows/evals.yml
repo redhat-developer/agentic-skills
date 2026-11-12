@@ -15,9 +15,7 @@ on:
           - argo-app-health-triage
           - argo-app-sync-triage
           - argo-operator
-          - argo-operations
           - argo-performance-tuning
-          - argo-team-onboard
       model:
         description: 'Model to use'
         required: true
@@ -49,11 +47,7 @@ jobs:
             needs_cluster: true
           - skill: argo-operator
             needs_cluster: true
-          - skill: argo-operations
-            needs_cluster: true
           - skill: argo-performance-tuning
-            needs_cluster: true
-          - skill: argo-team-onboard
             needs_cluster: true
     steps:
       - name: Filter by input

@@ -7,8 +7,8 @@
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
   <img src="https://img.shields.io/badge/OpenShift-layered%20products-EE0000.svg" alt="OpenShift">
   <img src="https://img.shields.io/badge/products-1%20shipping%20%7C%203%20open-8A63D2.svg" alt="1 product shipping, 3 open">
-  <img src="https://img.shields.io/badge/skills-9-8A63D2.svg" alt="9 skills">
-  <img src="https://img.shields.io/badge/evals-114-3FB950.svg" alt="114 evals">
+  <img src="https://img.shields.io/badge/skills-7-8A63D2.svg" alt="7 skills">
+  <img src="https://img.shields.io/badge/evals-92-3FB950.svg" alt="92 evals">
 </p>
 
 <p align="center">
@@ -113,7 +113,7 @@ you run.
 
 | Product | Covers | Skills | Status |
 |---------|--------|-------:|--------|
-| [**gitops**](skills/gitops) | Argo CD, Argo Rollouts | **6** | shipping, benchmarked |
+| [**gitops**](skills/gitops) | Argo CD, Argo Rollouts | **7** | shipping, benchmarked |
 | [**servicemesh**](skills/servicemesh) | Istio | — | [open for contributions](docs/adding-a-skill.md) |
 | [**serverless**](skills/serverless) | Knative | — | [open for contributions](docs/adding-a-skill.md) |
 | [**pipelines**](skills/pipelines) | Tekton | — | [open for contributions](docs/adding-a-skill.md) |
@@ -128,7 +128,7 @@ Evals are required — the guide explains the bar and why it is set where it is.
 Skills are grouped by product. Expand the one you use.
 
 <details open>
-<summary><b>🔵 GitOps</b> — Argo CD, Argo Rollouts · <b>6 skills</b>, benchmarked</summary>
+<summary><b>🔵 GitOps</b> — Argo CD, Argo Rollouts · <b>7 skills</b>, 4 benchmarked</summary>
 
 > **Scope — Red Hat OpenShift GitOps.** These skills cover Argo CD and Argo Rollouts as
 > shipped and supported by the OpenShift GitOps operator, including the operator-managed
@@ -160,9 +160,8 @@ The agent automatically selects the right skill based on what you ask:
  Health is bad ─────► argo-app-health-triage   "Why is this app Degraded?"
  Sync is bad ───────► argo-app-sync-triage     "Why is this app OutOfSync?"
  Operator owns it ──► argo-operator            "Sync says forbidden / app is ignored"
- Make a change ─────► argo-operations          "Install / create / promote / upgrade..."
+ Promote a rollout ─► argo-cluster-debug       "Promote / abort / retry the canary"
  Tune performance ──► argo-performance-tuning  "Why is this slow at scale?"
- Onboard a team ────► argo-team-onboard        "Set up a new team on Argo CD"
 ```
 
 You don't need to invoke skills manually — just describe what you need.
@@ -200,14 +199,10 @@ Generate an ArgoCD CR for the OpenShift GitOps operator with OAuth and Routes.
 | Application spec, sync policies, health checks, multi-cluster | `applications.md` |
 | ApplicationSet generators, progressive syncs, templates | `applicationsets.md` |
 | AppProject RBAC, source/destination restrictions, sync windows | `app-projects.md` |
-| Rollout canary/blue-green, traffic management, AnalysisTemplate | `rollouts.md` |
-| Notification services, templates, triggers, subscriptions | `notifications.md` |
 | Image updater annotations, strategies, write-back | `image-updater.md` |
 | Repository patterns (app-of-apps, ApplicationSet, monorepo) | `repo-patterns.md` |
-| Best practices (sync, RBAC, health, secrets) | `best-practices.md` |
 | argocd-agent hub-and-spoke architecture | `agent-mode.md` |
 | Multi-tenancy, apps-in-any-namespace, Autopilot | `multi-tenancy.md` |
-| OpenShift GitOps Operator, ArgoCD CRD, Routes, SCCs, OAuth | `openshift.md` |
 | **Operator-only CRDs** — RolloutManager, NotificationsConfiguration, NamespaceManagement, ImageUpdater, GitopsService | `openshift-gitops-operator.md` |
 | GitOps Promoter, PromotionStrategy, branch-per-env promotion, commit status gating | `gitops-promoter.md` |
 
@@ -270,40 +265,6 @@ Inspect all Rollouts on this cluster and give me a health report.
 Review the Argo CD configuration for security concerns.
 ```
 
-### Operations — Install, Deploy, Promote, Maintain
-
-<p align="center">
-  <img src="assets/screenshots/operations-preview.svg" alt="Operations Preview" width="820"/>
-</p>
-
-Use when you want to make changes. Writes are specified to follow a five-step gate:
-**Generate** → **Preview** with a server-side dry-run → **Blast radius** → **Confirm** →
-**Verify**. The agent stops at Confirm and waits for you.
-
-```text
-# Setup
-Install Argo CD on my OpenShift cluster using the GitOps operator.
-Create an AppProject for the frontend team with restricted access.
-Add the staging cluster to Argo CD.
-
-# Deploy
-Create an Application for my Helm chart with automated sync.
-Create an ApplicationSet with git directory generator and progressive syncs.
-Set up Slack notifications for sync failures.
-
-# Promote
-Promote the canary rollout frontend in production.
-Sync the Application with server-side apply.
-Abort the failing rollout and retry.
-
-# Maintain
-Upgrade Argo CD to the latest version.
-Back up all my Applications and AppProjects to YAML files.
-Rotate the Git credentials for the infra repo.
-```
-
-See **[Safety model](#safety-model)** for the full protocol.
-
 ### Performance Tuning — Diagnose & Fix Slowness at Scale
 
 <p align="center">
@@ -351,127 +312,6 @@ safety model as Operations before changing anything live.
 
 </details>
 
-### Team Onboarding — Set Up New Teams on Argo CD
-
-<p align="center">
-  <img src="assets/screenshots/onboarding-preview.svg" alt="Onboarding Preview" width="820"/>
-</p>
-
-Use when you need to onboard app teams onto Argo CD. The skill discovers what
-each team already has (CI, registry, source type) and generates only the Argo CD
-pieces — no assumptions about your stack.
-
-**Onboarding output is a commit, not a `kubectl apply`.** The tenant boundary —
-AppProject, RBAC, namespace, quotas, NetworkPolicies — is GitOps config like anything
-else, so the skill writes it to your GitOps repo and hands off to Argo CD to reconcile.
-Applying it directly would put the boundary outside Git: invisible in review, missing
-from the audit trail, and reverted the next time anything reconciles. The only exception
-is a one-time bootstrap when no control loop exists yet, and the skill names it as such.
-
-The recommended model follows Thomas Jungbauer's
-[project onboarding with GitOps and Helm](https://www.redhat.com/en/blog/project-onboarding-using-gitops-and-helm):
-onboarding a tenant means adding one small `values.yaml`, which a shared onboarding chart
-renders and an ApplicationSet discovers. Committing rendered manifests or Kustomize
-overlays is also supported.
-
-```text
-# Single team onboarding
-Onboard the payments team. They use Kustomize, deploy from
-https://github.com/acme/payments.git, need dev/staging/prod namespaces.
-
-# Helm-based team
-Onboard analytics — they deploy a Helm chart from OCI registry
-oci://registry.acme.com/charts/analytics with values in a separate config repo.
-
-# Self-service at scale
-Set up self-service onboarding so teams can add themselves via PR.
-
-# Multi-environment with promotion
-Onboard the checkout team with gitops-promoter gating dev → staging → prod.
-Production should require manual approval.
-```
-
-**What it generates:**
-
-| Resource | When | Why |
-|----------|------|-----|
-| AppProject | Always | Security boundary — scoped sourceRepos, destinations, RBAC |
-| Application | Always | Points to team's repo with correct source type (Helm/Kustomize/directory) |
-| RBAC role | Always | Project-scoped permissions for team's SSO group |
-| Namespace | Always | With Pod Security Standards (`enforce: restricted`) and monitoring labels |
-| NetworkPolicies | Always | Default-deny egress (with DNS allowed) plus router, monitoring, and same-namespace ingress — without these the namespace is open to every pod on the cluster |
-| ResourceQuota + LimitRange | If needed | Capacity limits, via t-shirt size or explicit values |
-| PromotionStrategy | If multi-env | Branch-per-environment promotion with health gates |
-| ApplicationSet | If self-service | Per-tenant values discovered by a `**/values.yaml` git generator |
-
-**What it refuses:**
-
-| Request | Response |
-|---------|----------|
-| `sourceRepos: '*'` | Lists repos explicitly — wildcards defeat multi-tenancy |
-| `clusterResourceWhitelist: '*/*'` | Scopes to specific CRD groups needed |
-| `exec` permission | Redirects to kubectl exec with scoped RBAC |
-| Hardcoded secrets | References ExternalSecret or SealedSecret patterns |
-| "Just apply it to the cluster" | Explains the drift cost and offers the commit path; proceeds only if it's a genuine bootstrap, and commits the same manifests alongside |
-
-<details>
-<summary>Reference docs included</summary>
-
-| Topic | Reference |
-|-------|-----------|
-| **Recommended model** — per-tenant values + onboarding chart, discovery ApplicationSet, t-shirt sizes, default NetworkPolicies, Pod Security Standards, two-instance split | `gitops-onboarding.md` |
-| What gets created, AppProject/Application/RBAC templates, validation checklist | `onboarding-guide.md` |
-| Self-service via ApplicationSet, PR workflow, guard rails | `self-service-pattern.md` |
-| Helm/Kustomize/directory variants, Rollouts, notifications, sync windows, promoter | `onboarding-variants.md` |
-
-</details>
-
-</details>
-
-<details>
-<summary><b>🟣 Service Mesh</b> — Istio · <i>no skills yet</i></summary>
-
-No Service Mesh skills have been contributed yet. Likely first candidates:
-
-- Sidecar injection — why a pod has no proxy, namespace labels vs the webhook
-- Traffic — VirtualService/DestinationRule precedence, mTLS PeerAuthentication modes
-- Diagnosing 503s between workloads, and telemetry that stops arriving
-
-If you work on Service Mesh, this is an open area — see
-[`skills/servicemesh/`](skills/servicemesh) and **[docs/adding-a-skill.md](docs/adding-a-skill.md)**.
-Evals are required; the guide explains the bar and why it is set there.
-
-</details>
-
-<details>
-<summary><b>🟢 Serverless</b> — Knative Serving & Eventing · <i>no skills yet</i></summary>
-
-No Serverless skills have been contributed yet. Likely first candidates:
-
-- Serving — Revisions stuck in NotReady, traffic splitting, scale-to-zero and cold starts
-- Eventing — Broker/Trigger wiring, Channel delivery, dead-letter sinks, source health
-
-If you work on Serverless, this is an open area — see
-[`skills/serverless/`](skills/serverless) and **[docs/adding-a-skill.md](docs/adding-a-skill.md)**.
-Evals are required; the guide explains the bar and why it is set there.
-
-</details>
-
-<details>
-<summary><b>🟡 Pipelines</b> — Tekton · <i>no skills yet</i></summary>
-
-No Pipelines skills have been contributed yet. Likely first candidates:
-
-- PipelineRun/TaskRun failure triage — step exit codes, init-container ordering
-- Workspaces, results passing between tasks, matrix fan-out
-- Triggers — EventListener, TriggerBinding and TriggerTemplate not firing
-
-If you work on Pipelines, this is an open area — see
-[`skills/pipelines/`](skills/pipelines) and **[docs/adding-a-skill.md](docs/adding-a-skill.md)**.
-Evals are required; the guide explains the bar and why it is set there.
-
-</details>
-
 ## How it works
 
 A skill is a Markdown file with YAML frontmatter. No runtime, no service, no daemon.
@@ -502,17 +342,23 @@ no measured baseline is a guess, and this repo does not publish guesses — incl
 the answer is unflattering.
 
 <details open>
-<summary><b>🔵 GitOps</b> — 6 skills, 587 expectations per condition</summary>
+<summary><b>🔵 GitOps</b> — 7 skills, 4 measured, re-measurement in progress</summary>
+
+> **Run 9 (2026-11-10) — measured with new tooling, and not comparable to runs 1–8.**
+> The process that produced the earlier runs was undocumented and could not be
+> reproduced, so it was rebuilt: `make baseline` / `make with-skill` / `make grade`,
+> with a strong baseline, structural isolation, one blind grader per comparison and a
+> verbatim evidence quote behind every verdict. The new grader is stricter, so baselines
+> sit lower and deltas run wider than the historical figures. Rank order is unchanged.
+> Historical numbers are in [benchmarks/README.md](benchmarks/README.md#archive-runs-18).
 
 | Skill | with-skill | baseline | delta | |
 |-------|-----------:|---------:|------:|---|
-| [`argo-performance-tuning`](benchmarks/argo-performance-tuning.md) | **96.7%** | 64.0% | **+32.7** |  |
-| [`argo-repo-audit`](benchmarks/argo-repo-audit.md) | **95.3%** | 79.4% | **+15.9** |  |
-| [`argo-operations`](benchmarks/argo-operations.md) | **96.4%** | 81.6% | **+14.8** |  |
-| [`argo-cluster-debug`](benchmarks/argo-cluster-debug.md) | **99.2%** | 89.3% | **+9.8** |  |
-| [`argo-team-onboard`](benchmarks/argo-team-onboard.md) | 89.4% | 84.6% | +4.8 | *unresolved* |
-| [`argo-knowledge`](benchmarks/argo-knowledge.md) | 98.5% | 93.9% | +4.5 | *unresolved* |
-| **Weighted overall** | **95.8%** | **82.2%** | **+13.6** | |
+| [`argo-performance-tuning`](benchmarks/argo-performance-tuning.md) | **94.9%** | 57.9% | **+36.9** | |
+| [`argo-repo-audit`](benchmarks/argo-repo-audit.md) | **96.5%** | 68.8% | **+27.6** | |
+| [`argo-cluster-debug`](benchmarks/argo-cluster-debug.md) | **95.0%** | 78.8% | **+16.2** | |
+| [`argo-knowledge`](benchmarks/argo-knowledge.md) | **95.4%** | 86.9% | **+8.5** | |
+| **Weighted overall** | **95.4%** | **74.5%** | **+20.9** | n=425 |
 
 **The delta tracks how product-specific a skill is.** Performance tuning — exact setting
 names, defaults the operator silently overrides, which CR field actually wins — gains
@@ -648,14 +494,18 @@ make test-validate        # YAML syntax, schema validation, kustomize builds
 make test-registration    # every skill registered in manifests, agent, banner, README, CI
 make test-expectations    # eval expectations' field paths resolve against the CRD schemas
 
-# Evals
-make eval                 # all six skills
+# Smoke test — with-skill arm only, self-scored. Not a benchmark.
+make eval                 # all four skills
 make eval-knowledge              # no cluster needed
 make eval-repo-audit             # no cluster needed
 make eval-cluster-debug          # needs a live cluster
-make eval-operations             # needs a live cluster
 make eval-performance-tuning     # needs a live cluster
-make eval-team-onboard           # needs a live cluster
+
+# Benchmark — two arms, blind grader, writes benchmarks/results/
+make baseline   SKILL=argo-knowledge RUN=$(date +%F)
+make with-skill SKILL=argo-knowledge RUN=$(date +%F)
+make grade      SKILL=argo-knowledge RUN=$(date +%F) LABEL="run 10"
+make check-numbers        # fails if a published table drifts from the verdicts
 ```
 
 Two guards worth knowing about, because they catch the mistakes that actually happened here:

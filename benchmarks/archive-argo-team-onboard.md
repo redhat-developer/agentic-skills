@@ -1,5 +1,12 @@
 # argo-team-onboard
 
+> **ARCHIVED.** `argo-team-onboard` was removed from this repo. On OpenShift the GitOps
+> Operator owns installing, configuring and upgrading Argo CD, and desired state
+> belongs in Git rather than being applied by an agent — which removed this skill's
+> reason to exist. The numbers below are a historical record of a skill that no
+> longer ships. They are not a claim about the current repo.
+
+
 ## Run 6 — 2026-10-23, live cluster, blind A/B
 
 **89.4% with the skill vs 84.6% baseline (+4.8) over 104 expectations.**
@@ -7,8 +14,8 @@
 Measured against a live OpenShift cluster (OpenShift GitOps 1.21.3, Argo CD v3.4.5).
 Graders saw "Condition A"/"Condition B" without knowing which was which and could not
 read `skills/`. Partial credit; every verdict carries an evidence string. Raw verdicts:
-[`results/argo-team-onboard.with-skill.results.json`](results/argo-team-onboard.with-skill.results.json) and
-[`results/argo-team-onboard.baseline.results.json`](results/argo-team-onboard.baseline.results.json).
+[`results-archive/argo-team-onboard.with-skill.results.json`](results-archive/argo-team-onboard.with-skill.results.json) and
+[`results-archive/argo-team-onboard.baseline.results.json`](results-archive/argo-team-onboard.baseline.results.json).
 
 | # | Eval | n | with-skill | baseline | delta |
 |---|------|--:|-----------:|---------:|------:|

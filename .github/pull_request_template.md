@@ -11,7 +11,6 @@
 - [ ] argo-knowledge
 - [ ] argo-repo-audit
 - [ ] argo-cluster-debug
-- [ ] argo-operations
 - [ ] Other: ___
 
 ## Checklist

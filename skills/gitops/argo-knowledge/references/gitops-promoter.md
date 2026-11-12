@@ -57,7 +57,7 @@ A `PromotionStrategy` references gates by **key**, not by resource name:
 ```yaml
 spec:
   activeCommitStatuses:
-    - key: argocd-app-health      # matches a CommitStatus whose spec.name is this key
+    - key: argocd-health      # matches a CommitStatus whose spec.name is this key
   proposedCommitStatuses:
     - key: security-scan
 ```
@@ -115,7 +115,7 @@ spec:
 
   # Commit statuses that gate ALL environments
   activeCommitStatuses:
-    - key: argocd-app-health
+    - key: argocd-health
   proposedCommitStatuses:
     - key: security-scan
 
@@ -244,7 +244,7 @@ GitOps Promoter is designed to work alongside Argo CD:
 
 1. **Argo CD watches environment branches** — each environment branch (`environment/dev`,
    `environment/prod`) is a source for an Argo CD Application or ApplicationSet
-2. **Argo CD reports health via CommitStatus** — use the `argocd-app-health` commit status
+2. **Argo CD reports health via CommitStatus** — use the `argocd-health` commit status
    key as an `activeCommitStatus` to gate promotions on Argo CD sync/health
 3. **ArgoCD CommitStatus CRD** — the promoter includes an `ArgoCDCommitStatus` resource
    that automatically reports Argo CD Application health as a commit status

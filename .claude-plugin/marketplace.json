@@ -6,12 +6,12 @@
   },
   "metadata": {
     "version": "0.1.0",
-    "description": "Agent Skills for Red Hat OpenShift layered products \u2014 one plugin per product."
+    "description": "Agent Skills for Red Hat OpenShift layered products — one plugin per product."
   },
   "plugins": [
     {
       "name": "openshift-gitops",
-      "description": "Skills for Red Hat OpenShift GitOps (Argo CD + Argo Rollouts) \u2014 knowledge and manifest generation, repository auditing, live cluster debugging, operations, performance tuning, and GitOps-first team onboarding",
+      "description": "Skills for Red Hat OpenShift GitOps (Argo CD + Argo Rollouts) — knowledge and manifest generation, repository auditing, live cluster debugging, and performance tuning",
       "source": "./",
       "strict": false,
       "skills": [
@@ -21,9 +21,7 @@
         "./skills/gitops/argo-app-health-triage",
         "./skills/gitops/argo-app-sync-triage",
         "./skills/gitops/argo-operator",
-        "./skills/gitops/argo-operations",
-        "./skills/gitops/argo-performance-tuning",
-        "./skills/gitops/argo-team-onboard"
+        "./skills/gitops/argo-performance-tuning"
       ],
       "agents": [
         "./agents/claude-code/argocd.md"

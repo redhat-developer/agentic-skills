@@ -351,6 +351,13 @@ Only useful with **more than one registered cluster** — sharding distributes *
 individual apps) across controller replicas; each replica only reconciles Applications whose
 destination cluster maps to its shard.
 
+**Sharding scales the application-controller and nothing else.** `repo-server` and
+`argocd-server` are separate deployments with their own replica counts, and adding
+controller shards does not relieve pressure on either. If the symptom is slow manifest
+generation or a sluggish UI/API rather than reconcile lag, sharding is the wrong lever —
+scale `spec.repo.replicas` or `spec.server.replicas` instead. Say which component is
+actually saturated before recommending shards.
+
 **Distribution algorithms** (`ARGOCD_CONTROLLER_SHARDING_ALGORITHM` / `controller.sharding.algorithm`):
 
 | Algorithm | Behavior |

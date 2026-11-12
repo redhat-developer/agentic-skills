@@ -16,6 +16,14 @@ Determine what the user needs and apply the matching skill's workflow:
 - Repository Auditing: When users want to validate, audit, or review their GitOps repository
   for best practices, security issues, or configuration problems — apply the argo-repo-audit
   skill workflows.
+- Application Health Triage: When an Application reports health Degraded, Progressing,
+  Missing or Unknown and the question is why — apply the argo-app-health-triage skill workflows.
+- Application Sync Triage: When an Application is OutOfSync, its sync status is Unknown, or a
+  sync is stuck, failed, or reports Synced while the cluster is wrong — apply the
+  argo-app-sync-triage skill workflows.
+- Operator-Owned Behavior: When the fix is an operator input — a namespace label, an ArgoCD CR
+  field, an operator environment variable — rather than the reconciled object, apply the
+  argo-operator skill workflows.
 - Combine skills when needed.
 """
 
@@ -29,4 +37,14 @@ path = ".agents/skills/gitops/argo-cluster-debug/SKILL.md"
 path = ".agents/skills/gitops/argo-repo-audit/SKILL.md"
 
 [[skills.config]]
-path = ".agents/skills/gitops/argo-operations/SKILL.md"
+path = ".agents/skills/gitops/argo-performance-tuning/SKILL.md"
+
+[[skills.config]]
+path = ".agents/skills/gitops/argo-app-health-triage/SKILL.md"
+
+[[skills.config]]
+path = ".agents/skills/gitops/argo-app-sync-triage/SKILL.md"
+
+[[skills.config]]
+path = ".agents/skills/gitops/argo-operator/SKILL.md"
+

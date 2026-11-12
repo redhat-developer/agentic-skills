@@ -18,7 +18,7 @@ license: MIT
 ## Rules
 
 1. **Always use correct apiVersion and kind.** Most Argo CRDs use `apiVersion: argoproj.io/v1alpha1` — see the CRD Table below — but **not all of them**, and assuming otherwise produces a manifest the API server rejects. The exceptions:
-   - **`argoproj.io/v1beta1`** — the OpenShift GitOps / Argo CD Operator `ArgoCD` CR (`references/openshift.md`). `v1alpha1` is deprecated for this kind.
+   - **`argoproj.io/v1beta1`** — the OpenShift GitOps / Argo CD Operator `ArgoCD` CR (`references/openshift-gitops-operator.md`). `v1alpha1` is deprecated for this kind.
    - **`promoter.argoproj.io/v1alpha1`** — every GitOps Promoter kind (`PromotionStrategy`, `ChangeTransferPolicy`, `GitRepository`, `ScmProvider`, `CommitStatus`, `ArgoCDCommitStatus`, `PullRequest`, and others — see the CRD Table and `references/gitops-promoter.md`). Note the different API **group**, not just a different version.
 
    Never invent CRDs or apiVersions that do not exist. When in doubt, check the reference file for that topic rather than defaulting to `argoproj.io/v1alpha1`.
@@ -216,14 +216,10 @@ user needs a manifest** — do not reproduce these from memory.
 | Application spec, **multi-source (`sources[]` + `$values`)**, sync policies, sync waves, health checks, ignore differences, multi-cluster | `references/applications.md` | Questions about Application configuration, multi-source, sync behavior, health, or multi-cluster |
 | ApplicationSet generators, templates, progressive syncs, `preserveResourcesOnDeletion`, `ignoreApplicationDifferences` | `references/applicationsets.md` | Questions about ApplicationSet generators, templating, progressive rollout, or suppressing drift on generated Applications |
 | AppProject RBAC, source/destination restrictions, sync windows | `references/app-projects.md` | Questions about RBAC, project policies, sync windows |
-| Rollout canary/blue-green, traffic management, AnalysisTemplate, experiments | `references/rollouts.md` | Questions about progressive delivery, canary/blue-green, analysis metrics |
-| Notification services, templates, triggers, subscriptions | `references/notifications.md` | Questions about alerting and notifications |
 | Image updater annotations, strategies, write-back | `references/image-updater.md` | Questions about automated image updates |
 | App-of-apps, monorepo, multi-repo patterns | `references/repo-patterns.md` | Questions about repository structure and GitOps patterns |
-| Sync policy, RBAC, health checks, secret management | `references/best-practices.md` | General architecture and operational best practices |
 | Agent mode, principal/agent architecture, managed/autonomous modes, hub-and-spoke | `references/agent-mode.md` | Questions about argocd-agent, multi-cluster at scale, air-gapped, edge deployments |
 | Applications in any namespace, multi-instance, multi-tenancy, Autopilot | `references/multi-tenancy.md` | Questions about multi-tenancy, team isolation, --application-namespaces, Autopilot bootstrap |
-| OpenShift GitOps Operator, ArgoCD CRD, Routes, SCCs, OAuth, managed namespaces | `references/openshift.md` | Questions about running Argo on OpenShift, operator-managed instances, OpenShift-specific patterns |
 | **Operator-only CRDs** — RolloutManager, NotificationsConfiguration, NamespaceManagement, ImageUpdater, GitopsService | `references/openshift-gitops-operator.md` | Anything that will not stay changed on OpenShift GitOps; deploying Rollouts; notifications; attaching tenant namespaces; image updates |
 | Operator-owned behavior on a live cluster — destination-namespace RBAC (`managed-by`, `NamespaceManagement`) and apps-in-any-namespace (`sourceNamespaces`) | `skills/gitops/argo-operator` | A live Application is `forbidden` or ignored entirely. Field reference stays in `references/openshift-gitops-operator.md`; the diagnosis is the other skill |
 | Live Application **sync state** triage | `skills/gitops/argo-app-sync-triage` | The symptom is `OutOfSync`, a stuck or failed sync, or `Synced` while the cluster is wrong — not a question about what a field means |

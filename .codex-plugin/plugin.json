@@ -12,7 +12,7 @@
     ],
     "category": "Developer Tools",
     "displayName": "OpenShift GitOps Skills",
-    "longDescription": "Skills for Red Hat OpenShift GitOps \u2014 the productized Argo CD distribution. Covers Argo CD and Argo Rollouts as shipped by the OpenShift GitOps operator: knowledge and manifest generation, repository auditing, live cluster debugging, operations (install, deploy, promote, maintain), performance and scale tuning, and GitOps-first team onboarding. Argo Workflows and Argo Events are out of scope \u2014 they are separate upstream projects not shipped by the operator.",
+    "longDescription": "Skills for Red Hat OpenShift GitOps — the productized Argo CD distribution. Covers Argo CD and Argo Rollouts as shipped by the OpenShift GitOps operator: knowledge and manifest generation, repository auditing, live cluster debugging with Argo Rollouts runtime control, and performance and scale tuning. Installing and upgrading Argo CD is the operator's job, and authoring desired state belongs in Git, so neither is covered. Argo Workflows and Argo Events are out of scope — they are separate upstream projects not shipped by the operator.",
     "shortDescription": "Skills to turn AI agents into Red Hat OpenShift GitOps engineers",
     "websiteURL": "https://docs.redhat.com/en/documentation/red_hat_openshift_gitops"
   },

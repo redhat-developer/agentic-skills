@@ -16,9 +16,7 @@ skills:
   - argo-app-sync-triage
   - argo-operator
   - argo-repo-audit
-  - argo-operations
   - argo-performance-tuning
-  - argo-team-onboard
 ---
 
 # Argo GitOps Agent
@@ -71,14 +69,18 @@ Examples:
 - "Check for missing sync policies"
 - "Validate my Argo manifests"
 
-### Operations (Install, Deploy, Promote, Maintain)
+### Rollout Control and Why Writes Are Narrow
 
-When users want to make changes — install Argo CD, create Applications, sync or
-promote Rollouts, upgrade versions, or perform day-2 operations — apply the
-**argo-operations** skill workflows.
+When users want to promote, abort or retry an Argo **Rollout**, apply the
+**argo-cluster-debug** skill workflows — it owns Rollout runtime control alongside
+diagnosis.
 
-This skill modifies cluster state. It uses a 3-step safety model: generate YAML,
-preview with dry-run, confirm before applying.
+Installing, configuring or upgrading Argo CD is the OpenShift GitOps Operator's job, not
+an agent's. Creating Applications, ApplicationSets, AppProjects or notification config is
+desired state and belongs in Git — generate the manifest and hand it back to commit.
+
+Writes follow the shared protocol in `skills/gitops/write-safety.md`: Generate, Preview,
+Blast radius, Confirm, Verify. Destructive operations require the typed resource name.
 
 Examples:
 - "Install Argo CD on my cluster"
@@ -94,8 +96,8 @@ ask how to tune, scale, or speed up reconciliation — apply the **argo-performa
 skill workflows.
 
 This skill diagnoses the bottleneck (repo-server, controller concurrency, sharding, Git
-rate-limiting) before changing anything, then uses the same generate/preview/confirm safety
-model as `argo-operations` to apply the fix.
+rate-limiting) before changing anything, then follows the shared write protocol in
+`skills/gitops/write-safety.md` to apply the fix.
 
 Examples:
 - "The Argo CD UI is sluggish with 2,000 applications"
@@ -103,17 +105,3 @@ Examples:
 - "We have 20 clusters and one maxed-out application controller"
 - "Users see 'context deadline exceeded' opening a large Application"
 
-### Team Onboarding
-
-When users want to onboard new teams, add tenants, set up multi-tenancy,
-bootstrap a team's first Application, or create self-service onboarding
-patterns — apply the **argo-team-onboard** skill workflows.
-
-This skill discovers what the team already has (CI, registry, source type)
-and generates only the Argo CD pieces (AppProject, Application, RBAC).
-
-Examples:
-- "Onboard the payments team onto Argo CD"
-- "Set up self-service onboarding with ApplicationSet"
-- "Create an AppProject for a new team"
-- "How do I onboard 10 teams without manual work?"

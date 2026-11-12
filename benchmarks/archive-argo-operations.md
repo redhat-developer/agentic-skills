@@ -1,5 +1,12 @@
 # argo-operations
 
+> **ARCHIVED.** `argo-operations` was removed from this repo. On OpenShift the GitOps
+> Operator owns installing, configuring and upgrading Argo CD, and desired state
+> belongs in Git rather than being applied by an agent — which removed this skill's
+> reason to exist. The numbers below are a historical record of a skill that no
+> longer ships. They are not a claim about the current repo.
+
+
 ## Run 6 — 2026-10-23, live cluster, blind A/B
 
 **96.4% with the skill vs 81.6% baseline (+14.8) over 98 expectations.**
@@ -7,8 +14,8 @@
 Measured against a live OpenShift cluster (OpenShift GitOps 1.21.3, Argo CD v3.4.5).
 Graders saw "Condition A"/"Condition B" without knowing which was which and could not
 read `skills/`. Partial credit; every verdict carries an evidence string. Raw verdicts:
-[`results/argo-operations.with-skill.results.json`](results/argo-operations.with-skill.results.json) and
-[`results/argo-operations.baseline.results.json`](results/argo-operations.baseline.results.json).
+[`results-archive/argo-operations.with-skill.results.json`](results-archive/argo-operations.with-skill.results.json) and
+[`results-archive/argo-operations.baseline.results.json`](results-archive/argo-operations.baseline.results.json).
 
 | # | Eval | n | with-skill | baseline | delta |
 |---|------|--:|-----------:|---------:|------:|

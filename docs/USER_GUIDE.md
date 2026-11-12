@@ -220,9 +220,7 @@ make eval
 make eval-knowledge
 make eval-repo-audit
 make eval-cluster-debug
-make eval-operations
 make eval-performance-tuning
-make eval-team-onboard
 
 # Clean schemas
 make clean-schemas

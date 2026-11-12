@@ -8,3 +8,10 @@ workspace/
 
 # Staging dir used by `make download-schemas`; removed on success, lingers on failure
 skills/gitops/argo-repo-audit/assets/schemas.tmp/
+
+# Raw benchmark run artifacts — responses and grader transcripts.
+# Verdicts live in benchmarks/results/ and ARE committed; these are the inputs.
+benchmarks/runs/
+
+__pycache__/
+*.pyc
