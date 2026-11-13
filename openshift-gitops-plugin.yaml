@@ -29,7 +29,7 @@ spec:
   type: plugin
   lifecycle: beta
   owner: group:redhat/ai5-marketplace
-  system: default/agentic-skills
+  system: default/openshift-gitops
   disciplines:
     - gitops
     - devops
@@ -37,6 +37,11 @@ spec:
     - cluster-management
     - operations
   agents: []
+  skills:
+    - airesource:ai5-marketplace/argo-knowledge
+    - airesource:ai5-marketplace/argo-repo-audit
+    - airesource:ai5-marketplace/argo-cluster-debug
+    - airesource:ai5-marketplace/argo-performance-tuning
   dependencyOf:
     - airesource:ai5-marketplace/argo-knowledge
     - airesource:ai5-marketplace/argo-repo-audit

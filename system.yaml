@@ -1,7 +1,7 @@
 apiVersion: backstage.io/v1alpha1
 kind: System
 metadata:
-  name: agentic-skills
+  name: openshift-gitops
   title: Agentic Skills
   description: >
     Agent skills for Red Hat OpenShift layered products.

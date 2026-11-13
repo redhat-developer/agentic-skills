@@ -94,6 +94,47 @@ for path in $SKILL_PATHS; do
   grep -q "skills/$product/$skill/SKILL.md" agents/github-copilot/argocd.agent.md || note "agents/github-copilot/argocd.agent.md skill list"
 done
 
+# Compass System ↔ plugin coherence (requires yq).
+if command -v yq >/dev/null 2>&1; then
+  # Both root entities are required when either exists.
+  [ -f system.yaml ]                    || note "system.yaml missing"
+  [ -f openshift-gitops-plugin.yaml ]   || note "openshift-gitops-plugin.yaml missing"
+
+  if [ -f system.yaml ]; then
+    sys_name=$(yq -r '.metadata.name // ""' system.yaml 2>/dev/null)
+    [ -n "$sys_name" ] || note "system.yaml metadata.name empty or invalid"
+  fi
+
+  if [ -f openshift-gitops-plugin.yaml ]; then
+    plugin_system=$(yq -r '.spec.system // ""' openshift-gitops-plugin.yaml 2>/dev/null)
+    [ -n "$plugin_system" ] || note "plugin spec.system empty or missing"
+
+    if [ -f system.yaml ] && [ -n "$sys_name" ] && [ -n "$plugin_system" ]; then
+      if [ "$plugin_system" != "default/$sys_name" ]; then
+        note "plugin spec.system ($plugin_system) does not match system.yaml name (default/$sys_name)"
+      fi
+    fi
+
+    # Plugin spec.skills must be a YAML sequence of strings listing exactly
+    # the discovered skills. A mapping or missing key must not pass.
+    skills_kind=$(yq '.spec.skills | type' openshift-gitops-plugin.yaml 2>/dev/null)
+    if [ "$skills_kind" != '!!seq' ]; then
+      note "plugin spec.skills is not a sequence (got $skills_kind)"
+    else
+      plugin_skills=$(yq -r '.spec.skills[]' openshift-gitops-plugin.yaml 2>/dev/null | sort)
+      expected_skills=""
+      for path in $SKILL_PATHS; do
+        skill=$(echo "$path" | sed 's|.*/||')
+        expected_skills=$(printf '%s\nairesource:ai5-marketplace/%s' "$expected_skills" "$skill")
+      done
+      expected_skills=$(echo "$expected_skills" | sed '/^$/d' | sort)
+      if [ "$plugin_skills" != "$expected_skills" ]; then
+        note "plugin spec.skills does not match discovered skills"
+      fi
+    fi
+  fi
+fi
+
 # The README badge and the Benchmarks notice cite an eval count. The banner drifted two
 # skills behind before anyone noticed; don't let the same happen to a number.
 EVAL_TOTAL=$(python3 -c "

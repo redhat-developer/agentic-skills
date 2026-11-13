@@ -16,6 +16,8 @@ for d in skills scripts .claude-plugin agents assets .github benchmarks; do
 done
 cp "$REPO_ROOT/Makefile" "$REPO_ROOT/README.md" "$SANDBOX/"
 [ -f "$REPO_ROOT/catalog-info.yaml" ] && cp "$REPO_ROOT/catalog-info.yaml" "$SANDBOX/"
+[ -f "$REPO_ROOT/system.yaml" ] && cp "$REPO_ROOT/system.yaml" "$SANDBOX/"
+[ -f "$REPO_ROOT/openshift-gitops-plugin.yaml" ] && cp "$REPO_ROOT/openshift-gitops-plugin.yaml" "$SANDBOX/"
 
 cd "$SANDBOX"
 SKILL="skills/gitops/argo-knowledge"
@@ -86,7 +88,43 @@ echo "  {{invalid yaml" >> "$SKILL/catalog-info.yaml"
 expect_fail "detects invalid YAML"
 cp "$SANDBOX/_bak6.yaml" "$SKILL/catalog-info.yaml"
 
-# ── 11. Clean restore ────────────────────────────────────────────────
+# ── 11. Missing system.yaml ──────────────────────────────────────────
+cp system.yaml "$SANDBOX/_sys.yaml"
+rm system.yaml
+expect_fail "detects missing system.yaml"
+cp "$SANDBOX/_sys.yaml" system.yaml
+
+# ── 12. Missing plugin manifest ──────────────────────────────────────
+cp openshift-gitops-plugin.yaml "$SANDBOX/_plug.yaml"
+rm openshift-gitops-plugin.yaml
+expect_fail "detects missing plugin manifest"
+cp "$SANDBOX/_plug.yaml" openshift-gitops-plugin.yaml
+
+# ── 13. System ↔ plugin spec.system mismatch ────────────────────────
+cp system.yaml "$SANDBOX/_sys2.yaml"
+yq -i '.metadata.name = "wrong-name"' system.yaml
+expect_fail "detects system name vs plugin spec.system mismatch"
+cp "$SANDBOX/_sys2.yaml" system.yaml
+
+# ── 14. Plugin spec.skills missing a skill ───────────────────────────
+cp openshift-gitops-plugin.yaml "$SANDBOX/_plug2.yaml"
+yq -i 'del(.spec.skills[-1])' openshift-gitops-plugin.yaml
+expect_fail "detects spec.skills missing a discovered skill"
+cp "$SANDBOX/_plug2.yaml" openshift-gitops-plugin.yaml
+
+# ── 15. Plugin spec.skills is a mapping (wrong shape) ────────────────
+cp openshift-gitops-plugin.yaml "$SANDBOX/_plug3.yaml"
+yq -i '.spec.skills = {"bad": "shape"}' openshift-gitops-plugin.yaml
+expect_fail "detects spec.skills as mapping instead of sequence"
+cp "$SANDBOX/_plug3.yaml" openshift-gitops-plugin.yaml
+
+# ── 16. Plugin spec.skills has wrong ref ─────────────────────────────
+cp openshift-gitops-plugin.yaml "$SANDBOX/_plug4.yaml"
+yq -i '.spec.skills[0] = "airesource:ai5-marketplace/nonexistent-skill"' openshift-gitops-plugin.yaml
+expect_fail "detects mismatched skill ref in spec.skills"
+cp "$SANDBOX/_plug4.yaml" openshift-gitops-plugin.yaml
+
+# ── 17. Clean restore ───────────────────────────────────────────────
 expect_pass "clean after restore"
 
 echo ""
