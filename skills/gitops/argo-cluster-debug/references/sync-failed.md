@@ -165,12 +165,19 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
 'retryCount={.status.operationState.retryCount}{"\n"}'
 ```
 
-With no `retry` block, an auto-sync failure is **terminal for that revision**. The
-controller logs `Skipping auto-sync: most recent sync already to <rev>` and will not
-try again until a new commit arrives. This is why a transient failure — a webhook
-blip, a brief quota breach — leaves an Application stuck `OutOfSync` long after the
-cause has cleared. Say so explicitly: the condition is gone and the Application will
-not recover on its own.
+After a failed operation with no retries remaining, auto-sync does not repeat the
+same revision and parameter combination. In Argo CD 3.4 the log is
+`Skipping auto-sync: failed previous sync attempt to <last-revisions> and will not retry for <desired-revisions>`;
+the condition message starts `Failed last sync attempt to`. The final log argument is
+a revision list, not a retry duration. With no `retry` policy, a terminal failure can
+therefore leave the app `OutOfSync` after a transient cause clears. A new desired
+revision/parameters or a separately authorized manual sync is needed; triage does not
+run it. `selfHeal: true` does not retry this failed attempt by itself.
+
+Do not confuse this with `Skipping auto-sync: most recent sync already to <rev>`:
+that message follows a **successful** prior sync when self-heal is disabled. Read the
+operation phase and actual controller log before choosing between these cases.
+Source: [Argo CD 3.4 auto-sync decision](https://github.com/argoproj/argo-cd/blob/release-3.4/controller/appcontroller.go).
 
 ## 9. Report
 

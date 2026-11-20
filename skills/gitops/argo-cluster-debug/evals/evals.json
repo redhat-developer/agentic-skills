@@ -183,20 +183,20 @@
       "expectations": [
         "Identifies the message as an error from a custom Lua health script, and the status as a failure to compute health rather than a failure of the workload",
         "States that Unknown is the worst status in the rollup order, so it masks the crash-looping Deployment, which is why the Application does not report Degraded",
-        "Points at resource.customizations.health.<group>_<Kind> in argocd-cm as where the script lives, and locates the fix there rather than in the workload",
+        "Inspects the custom health override; on an operator-managed instance recommends its authoritative ArgoCD resourceHealthChecks input through Git rather than editing generated argocd-cm or changing the workload to hide a script error.",
         "Re-checks the remaining resources and reports the crash-looping Deployment as a second, masked finding rather than merging it into the Unknown",
         "Does not claim the Widget CR itself is unhealthy on the strength of the Unknown status"
       ]
     },
     {
       "id": 15,
-      "name": "A missing ConfigMap does not make an Application Missing",
-      "prompt": "Application reports health Missing. Someone deleted a ConfigMap that the app's Deployment mounts. Is the deleted ConfigMap why the Application health is Missing?",
+      "name": "Argo CD 3.4 Missing health depends on live-resource inventory",
+      "prompt": "On Argo CD 3.4, Application payments reports health Missing. Someone deleted a ConfigMap mounted by the app's Deployment, but a direct read confirms that Deployment still exists in the configured destination. Does the ConfigMap deletion explain aggregate Missing? What if another app contains only a ConfigMap and that object is absent?",
       "expectations": [
-        "States that it is not, because a missing resource only affects Application health when Argo CD can health-assess its kind, and there is no built-in or bundled health check for ConfigMap",
-        "Directs the investigation to a resource of a kind that does have a health assessment \u2014 such as Deployment, StatefulSet, Service, PVC, Job, Ingress, or a CRD with a bundled or custom Lua script",
-        "May note that the deleted ConfigMap can still cause a Degraded workload, for example CreateContainerConfigError, without being the source of the Missing status",
-        "Does not assert that any deleted resource makes an Application Missing"
+        "Explains that Argo CD 3.4 skips individual absent live resources during health aggregation; the normal aggregate Missing case is expected non-hook resources with none live.",
+        "Does not attribute Missing to one deleted ConfigMap while the Deployment is live; investigates comparison freshness, resource inventory, destination and any custom health override rather than searching only for a health-checkable missing kind.",
+        "Explains that an all-missing ConfigMap-only Application can report Missing even though ConfigMap has no built-in health check.",
+        "Separates indirect workload failure caused by a missing mounted ConfigMap from aggregate Missing, and does not apply older rollup rules to version 3.4."
       ]
     },
     {
@@ -246,20 +246,20 @@
     {
       "id": 20,
       "name": "Hook pod failure does not surface as unhealthy",
-      "prompt": "Application billing shows health Missing and the sync operation phase is Failed. A PreSync hook pod is in ImagePullBackOff, but no resource in the Application shows as Degraded. Why is nothing Degraded, and what is the root cause?",
+      "prompt": "On Argo CD 3.4, Application billing shows health Missing and the sync operation phase is Failed. A PreSync hook pod is in ImagePullBackOff, but no resource in the Application shows as Degraded. Why is nothing Degraded, and what is the root cause? This initial sync has created no expected non-hook resources.",
       "expectations": [
         "States that hooks are excluded from the Application health rollup, which is why the failing hook pod does not appear as a Degraded resource",
         "Adds that a pod with restartPolicy OnFailure or Never does not take the waiting-reason Degraded path at all, by design, so hook pods are not failed prematurely",
-        "Identifies the failed PreSync hook as the reason the sync never reached the resources, making the missing resources a symptom rather than a separate finding",
+        "Identifies the failed PreSync hook as the reason the sync never reached the resources, making the missing resources a symptom rather than a separate finding. On 3.4, aggregate Missing follows because expected non-hook resources exist but none are live, not because one health-checkable kind is missing.",
         "Reports one root cause \u2014 the hook image cannot be pulled \u2014 rather than reporting the missing resources as an independent problem"
       ]
     },
     {
       "id": 21,
       "name": "Auto-sync will not retry the same failed revision",
-      "prompt": "Application payments in team-frontend has been OutOfSync for three hours. It has syncPolicy.automated with prune false and selfHeal true. No sync operation is running. status.operationState.phase is Failed and finishedAt was three hours ago. The quota problem that caused the failure was fixed two hours ago. Why has it not recovered?",
+      "prompt": "Application payments in team-frontend has been OutOfSync for three hours. It has syncPolicy.automated with prune false and selfHeal true. No sync operation is running. status.operationState.phase is Failed and finishedAt was three hours ago. The quota problem that caused the failure was fixed two hours ago. Why has it not recovered? There is no configured retry block.",
       "expectations": [
-        "States that Argo CD will not auto-sync the same revision again after a failed attempt, and that the controller logs this as 'Skipping auto-sync: most recent sync already to <revision>'",
+        "States that the failed previous-attempt log is 'Skipping auto-sync: failed previous sync attempt to <last revisions> and will not retry for <desired revisions>', not 'most recent sync already to'; the latter describes a successful previous sync with selfHeal disabled.",
         "States that without spec.syncPolicy.retry an auto-sync failure is terminal for that revision, so a new commit or a manual sync is required",
         "Explicitly says the Application will not recover on its own even though the underlying cause has cleared",
         "Does not attribute the stall to selfHeal, to the reconciliation interval, or to a comparison problem"
@@ -292,11 +292,11 @@
       "name": "Synced but the live object does not match git",
       "prompt": "Application billing reports Synced, but the Deployment in billing-prod has 2 replicas and git says 5. reconciledAt is 40 seconds ago and status.sync.revision matches the branch head. The Deployment is not listed in status.resources. What is going on?",
       "expectations": [
-        "States that Synced means the comparison found no difference, not that the cluster matches the repository",
-        "Identifies the absence of the Deployment from status.resources as the key evidence: Argo CD does not consider it part of the Application",
-        "Attributes it to the resource tracking method failing to match the live object, and checks app.kubernetes.io/instance or argocd.argoproj.io/tracking-id against the configured method",
-        "Mentions that a Helm chart setting app.kubernetes.io/instance itself, or 63-character truncation of the label, detaches a resource when the method is the default label",
-        "Does not conclude that a manual kubectl scale is the cause without checking tracking first"
+        "States that Synced describes the comparison performed, not a guarantee that the separately inspected object matches the intended Git content.",
+        "Treats the missing resource-list entry as a scope or observation clue rather than proof of a tracking mismatch; checks the rendered manifest, Application source/path and resource exclusions as well as freshness and destination.",
+        "Reads the configured resource tracking method and checks the relevant tracking annotation or label, using annotation as the Argo CD 3.x default.",
+        "Limits label truncation and Helm label collisions to explicit or legacy label tracking rather than describing label as the 3.x default.",
+        "Does not assert a tracking failure or a manual scale as the established cause without the corresponding evidence."
       ]
     },
     {
@@ -448,11 +448,11 @@
     {
       "id": 38,
       "name": "InvalidSpecError distinguishes the AppProject layer from the instance layer",
-      "prompt": "Application orders in namespace team-orders has a status, and one condition: InvalidSpecError, 'Application is not allowed in namespace team-orders'. team-orders is already listed in ArgoCD.spec.sourceNamespaces. Why is it still failing?",
+      "prompt": "On Argo CD 3.4, Application orders in team-orders has a fresh reconciledAt from this run and InvalidSpecError: application 'orders' in namespace 'team-orders' is not permitted to use project 'team'. The owning cluster-scoped instance is in openshift-gitops. Its current ArgoCD.spec.sourceNamespaces includes team-orders and the generated controller arguments include that namespace. Why is it still failing?",
       "expectations": [
-        "States that because the Application has a status at all, the instance is watching the namespace and the ArgoCD CR layer is already correct",
+        "Uses the fresh reconciliation and current namespace-watch configuration to distinguish project rejection from an instance watch failure; does not treat any old stored status as proof of current watching.",
         "Identifies the AppProject's spec.sourceNamespaces as the missing piece, not the ArgoCD CR",
-        "States that the AppProject is an ordinary Argo CD object and is not operator-owned, so editing it is a normal change that will not be reverted",
+        "Locates the project policy in the AppProject rather than the operator-generated watch configuration; recommends a desired-state correction in Git, subject to its ownership, without claiming ordinary objects can never be reconciled back.",
         "Does not recommend re-adding or changing .spec.sourceNamespaces on the ArgoCD CR"
       ]
     },
@@ -470,12 +470,12 @@
     {
       "id": 40,
       "name": "CR is already correct but was never reconciled",
-      "prompt": "I set .spec.sourceNamespaces on the ArgoCD CR two hours ago. kubectl get argocd shows the field is there. But the namespace still has no managed-by-cluster-argocd label and the controller still does not have --application-namespaces. Should I set the label manually to unblock the team?",
+      "prompt": "The operator Deployment has ARGOCD_CLUSTER_CONFIG_NAMESPACES=openshift-gitops. ArgoCD openshift-gitops in that namespace is cluster-scoped. I set its .spec.sourceNamespaces to team-orders two hours ago; a fresh CR read shows the field retained. But team-orders has no managed-by-cluster-argocd label, no generated source-namespace RBAC, and the controller has no --application-namespaces argument. Should I set the label manually to unblock the team?",
       "expectations": [
         "Says no, and does not recommend setting the label, the RBAC, or the controller flag by hand",
-        "Recognises this as an operator fault rather than a misplaced setting: the CR field is already correct, so repeating it is not a useful recommendation",
-        "Compares .metadata.generation against .status.observedGeneration on the ArgoCD CR as the discriminating check",
-        "Checks whether the field was silently pruned on write by an operator version that does not know it, by reading the CR back",
+        "Checks that apps-in-any-namespace is supported for the established cluster-scoped instance, then investigates operator reconciliation rather than assuming a missing configuration input or claiming the absent objects alone prove a specific operator fault.",
+        "Uses exposed ArgoCD status conditions/phase, generated workload/RBAC state and operator logs; does not compare metadata.generation with nonexistent top-level ArgoCD.status.observedGeneration.",
+        "Confirms the sourceNamespaces value persists on a fresh CR read to rule out schema pruning; treats absent or stale status as inconclusive rather than as proof of successful reconciliation.",
         "Hands off operator and OLM triage \u2014 pod restarts, CSV phase, InstallPlan, conversion webhook \u2014 to Workflow 6 in skills/gitops/argo-cluster-debug/SKILL.md"
       ]
     },
@@ -515,19 +515,43 @@
         "Does not claim that granting destination access fixes the DB_PORT crash, or that the crash caused Kubernetes authorization to deny Service creation.",
         "Proposes the operator-owned destination grant rather than hand-written generated Roles/RoleBindings, and a Git correction for DB_PORT rather than a live Deployment edit that selfHeal would revert.",
         "States the scope/impact of both recommendations, keeps Application namespace team-frontend distinct from destination payments-dev, and completes without questions or writes.",
-        "Reuses the current-run installation evidence and handoff evidence instead of restarting the generic workflow or dropping the secondary fault."
+        "Reuses the current-run installation evidence and handoff evidence instead of restarting the generic workflow or dropping the secondary fault. Does not use nonexistent top-level ArgoCD.status.observedGeneration as reconciliation evidence."
       ]
     },
     {
       "id": 44,
-      "name": "Repeated tool calls in fresh shell sessions",
-      "prompt": "An unattended check found Application legacy-erp in team-frontend OutOfSync. Diagnose it using the offline cluster simulator. No live cluster may be contacted. Execute shell calls through python3 tests/argo-cluster-debug/offline-runtime/fresh-shell.py --log /tmp/argo-cluster-debug-e44.jsonl --command '<shell command>'. Each invocation starts a fresh shell with KCTL, NS, CR, APP and APP_NS unset. Use at least two separate invocations because this runtime collects Application state and controller logs in separate calls. The simulator exposes oc and kubectl: config current-context; api-resources; get applications.argoproj.io <name> -n <namespace> -o json; get argocd -A -o json; and logs statefulset/<controller> -n <namespace> --tail=50. Installation health was verified earlier in this run: team-frontend/team-argocd components are Ready, the operator CSV is Succeeded, and this is the owning instance. Read SKILL.md/references as needed; obtain diagnostic evidence through the simulator rather than reading its backing fixture.",
+      "name": "Repeated tool calls with fresh command-session state",
+      "prompt": "An unattended check found Application legacy-erp in team-frontend OutOfSync. Diagnose it using the offline cluster simulator. No live cluster may be contacted. Execute calls through python3 tests/argo-cluster-debug/offline-runtime/fresh-shell.py --log /tmp/argo-cluster-debug-e44.jsonl --command '<commands>'. Each invocation starts a fresh restricted command session with KCTL, NS, CR, APP and APP_NS unset. The simulator interprets newline-separated standalone variable assignments and direct oc/kubectl reads, with $VAR or ${VAR} expansion; it does not run a shell and rejects conditionals, pipelines, substitutions and other executables. Use at least two separate invocations because this runtime collects Application state and controller logs separately. The simulator exposes oc and kubectl: config current-context; api-resources; get applications.argoproj.io <name> -n <namespace> -o json; get argocd -A -o json; and logs statefulset/<controller> -n <namespace> --tail=50. Installation health was verified earlier in this run: team-frontend/team-argocd components are Ready, the operator CSV is Succeeded, and this is the owning instance. Read SKILL.md/references as needed; obtain diagnostic evidence through the simulator rather than reading its backing fixture.",
       "expectations": [
-        "The tool trace contains at least two separate fresh-shell.py invocations, including a successful Application read and controller-log read; merely proposing commands is a failure.",
-        "Each invocation that uses KCTL, NS, CR, APP or APP_NS defines them in that invocation, or uses explicit CLI/resource/namespace arguments; no read fails because a previous shell variable was assumed to persist.",
+        "The tool trace contains at least two separate fresh-shell.py command-session invocations, including a successful Application read and controller-log read; merely proposing commands is a failure.",
+        "Each invocation that uses KCTL, NS, CR, APP or APP_NS defines them in that invocation, or uses explicit CLI/resource/namespace arguments; no read fails because a previous session variable was assumed to persist.",
         "Uses applications.argoproj.io and queries the specified Application in team-frontend without substituting another resource or instance.",
         "Uses the observed absence of automated policy and controller log to diagnose manual sync awaiting intentional action; reports no action required and cites actual simulator output.",
         "Completes without questions or live-cluster calls and performs no mutation; the simulator transcript contains only permitted read operations."
+      ]
+    },
+    {
+      "id": 45,
+      "name": "External resource health is not an empty health verdict",
+      "prompt": "An unattended job is diagnosing Degraded Application payments in team-frontend on Argo CD 3.4. Its Kubernetes Application CR has no status.resources[].health fields. Use the complete offline captured evidence in tests/argo-cluster-debug/offline-runtime/external-health.json, including the Argo CD resource-tree API response. Produce a diagnosis; do not contact a live cluster.",
+      "expectations": [
+        "Recognizes resourceHealthSource appTree and disabled health persistence as normal external storage, not missing resources or broken health assessment.",
+        "Uses the captured Argo CD resource-tree health to identify the payments Deployment as Degraded and correlates it with the accessible Deployment condition.",
+        "Does not report the ConfigMap as unhealthy or Missing solely because it has no health field.",
+        "States the underlying pod cause remains unverified because pod/log reads were denied; separates observed rollout failure from an uncertain root cause.",
+        "Completes without questions, live-cluster calls or mutations, and does not enable persistence merely to perform diagnosis."
+      ]
+    },
+    {
+      "id": 46,
+      "name": "Source namespace feature requires a cluster-scoped instance",
+      "prompt": "Offline unattended diagnosis on OpenShift GitOps: ArgoCD team-argocd is in team-frontend. The live operator Deployment has ARGOCD_CLUSTER_CONFIG_NAMESPACES=openshift-gitops; the instance's namespace is not in that list, and it is namespace-scoped. A fresh ArgoCD read retains spec.sourceNamespaces: [team-orders]. Application team-orders/orders has empty status. team-orders has no generated source-namespace label or RBAC and the controller has no application-namespaces argument. Installation components are Ready and the operator CSV is Succeeded. Is this a failed operator reconciliation? Use only this captured evidence; no cluster is available.",
+      "expectations": [
+        "Checks the instance scope and states apps-in-any-namespace source-namespace reconciliation requires a cluster-scoped instance; the current namespace-scoped instance is unsupported for that configuration.",
+        "Does not diagnose a stuck operator or unsupported observedGeneration gap merely because the retained sourceNamespaces field has no generated objects.",
+        "Does not propose manually creating generated source-namespace labels, Roles, RoleBindings or controller flags.",
+        "Explains a supported configuration choice with its scope and impact, such as keeping Application objects in the current instance namespace or using an appropriately configured cluster-scoped instance; does not equate the destination managed-by grant with the source watch permission.",
+        "Finishes read-only without questions and does not treat Ready components as proof that an unsupported feature must reconcile."
       ]
     }
   ]

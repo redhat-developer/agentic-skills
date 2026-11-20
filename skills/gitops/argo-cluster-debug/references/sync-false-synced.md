@@ -35,9 +35,10 @@ branch head, which makes `Synced` entirely accurate and the expectation wrong.
 
 ## 2. Is Argo CD looking at the object you are looking at?
 
-If the resource tracking method cannot match the live object, Argo CD does not consider
-it part of the Application. It is invisible to the diff, so the Application is `Synced`
-while the object sits there unmanaged.
+Check the configured tracking method and resource identity, but do not assume a
+tracking failure from the Application status alone. An object absent from the managed
+resource list might be outside the rendered source, excluded, or looked up in a
+different namespace/cluster; section 4 checks those possibilities.
 
 ```bash
 $KCTL get cm argocd-cm -n "$NS" -o jsonpath='{.data.application\.resourceTrackingMethod}{"\n"}'
@@ -46,8 +47,9 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
   -o jsonpath='{range .status.resources[*]}{.kind}/{.namespace}/{.name}{"\n"}{end}'
 ```
 
-If the object you care about is not in that list, the Application does not manage it,
-whatever the repository contains. Then check what the live object is tagged with:
+If the object is not in that list, establish why it is outside the current comparison.
+A repository file is not proof that the source rendered it. Check what the live object
+is tagged with and compare its group/kind/namespace/name with the rendered manifest:
 
 ```bash
 $KCTL get <kind> <name> -n <ns> -o jsonpath=''\
@@ -57,16 +59,19 @@ $KCTL get <kind> <name> -n <ns> -o jsonpath=''\
 
 | Method | Key | Failure mode |
 |---|---|---|
-| `label` (default) | `app.kubernetes.io/instance` | Truncated at 63 characters, and Helm charts set this label for their own purposes. A chart overwriting it detaches the resource from Argo CD. |
-| `annotation` | `argocd.argoproj.io/tracking-id` | No length limit and no collision with Helm. |
+| `label` (legacy or explicit opt-out in 3.x) | `app.kubernetes.io/instance` | 63-character value limit; chart-written labels can conflict with ownership tracking. |
+| `annotation` (default in 3.x) | `argocd.argoproj.io/tracking-id` | Verify the Application and resource identity encoded in the annotation. |
 | `annotation+label` | both | The label is written for compatibility; the annotation is authoritative. |
 
-The label collision with Helm is worth knowing by name: a chart that sets
-`app.kubernetes.io/instance` to the release name makes Argo CD lose track of the
-resource, which then appears both unmanaged and duplicated on the next sync.
+Investigate Helm label collisions or truncation only when label tracking is active.
+Under annotation tracking, a differing Helm instance label alone does not detach the
+resource. Neither a missing tag nor absence from `status.resources` proves a duplicate
+will be created: verify rendered identity and scope before attributing the mismatch.
 
 On an operator-managed instance the tracking method is `.spec.resourceTrackingMethod`
 on the `ArgoCD` CR. An `argocd-cm` edit is reverted.
+
+Source: [Argo CD 3.0 tracking migration](https://argo-cd.readthedocs.io/en/release-3.4/operator-manual/upgrading/2.14-3.0/#use-annotation-based-tracking-by-default).
 
 ## 3. Is the difference being ignored on purpose?
 

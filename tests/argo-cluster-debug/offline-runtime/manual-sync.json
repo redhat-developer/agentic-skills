@@ -75,7 +75,8 @@
                 "status": "Healthy"
               }
             }
-          ]
+          ],
+          "resourceHealthSource": "inline"
         }
       },
       "stderr": null
@@ -84,6 +85,22 @@
       "command": "oc logs -n team-frontend statefulset/team-argocd-application-controller --tail=50",
       "exit_code": 0,
       "stdout": "time=\"2026-11-20T09:59:00Z\" level=info msg=\"Skipping auto-sync: automated sync is not configured\" application=team-frontend/legacy-erp",
+      "stderr": null
+    },
+    {
+      "command": "oc get configmap argocd-cmd-params-cm -n team-frontend -o json",
+      "exit_code": 0,
+      "stdout": {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+          "name": "argocd-cmd-params-cm",
+          "namespace": "team-frontend"
+        },
+        "data": {
+          "controller.resource.health.persist": "true"
+        }
+      },
       "stderr": null
     }
   ]

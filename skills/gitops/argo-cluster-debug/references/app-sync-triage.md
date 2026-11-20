@@ -32,10 +32,12 @@ For each managed resource, the controller compares the **desired** manifest agai
 1. Render the source — plain manifests, Helm, Kustomize, or a config management plugin.
    A render failure means there is no desired state, so the status becomes `Unknown`
    with a `ComparisonError` condition. Nothing is compared.
-2. Find the live object using the **resource tracking method**. Default is `label`,
-   matching `app.kubernetes.io/instance`. If the method is `annotation` the key is
-   `argocd.argoproj.io/tracking-id`. A resource the method cannot match is treated as
-   not existing, so the app is `OutOfSync` and a second copy may be created on sync.
+2. Associate live resources with the Application using the configured **resource
+   tracking method**. Argo CD 3.x defaults to `annotation`, using
+   `argocd.argoproj.io/tracking-id`; `label` uses `app.kubernetes.io/instance` and is
+   a legacy or explicit opt-out setting. Check the running version and effective
+   configuration before interpreting tags. A missing tag alone does not prove an
+   object is absent: compare rendered and live resource identities too.
 3. Normalize: drop fields Argo CD knows the API server defaults, then apply
    `spec.ignoreDifferences` on the Application and
    `resource.customizations.ignoreDifferences.<group>_<Kind>` from `argocd-cm`.
@@ -114,6 +116,10 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
 
 An empty `finishedAt` with a non-empty `startedAt` means an operation is still running.
 Compare `startedAt` against now before calling anything stuck.
+
+Empty per-resource health is not a failure or a clean health result. Argo CD 3.x
+normally keeps it in the application tree; load `resource-health.md` if health is
+needed for a handoff. Per-resource sync values in the CR remain useful.
 
 ## Route by state
 

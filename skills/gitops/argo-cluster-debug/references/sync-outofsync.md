@@ -80,7 +80,8 @@ $KCTL logs -n "$NS" sts/"$CR"-application-controller --tail=500 \
 
 | Log or condition | Cause |
 |---|---|
-| `Skipping auto-sync: most recent sync already to <rev>` | Argo CD already attempted this exact revision and the operation failed. It will not retry the same revision automatically. A new commit, a manual sync, or `spec.syncPolicy.retry` is needed. This is the most commonly missed cause. |
+| `Skipping auto-sync: failed previous sync attempt to <last-revisions> and will not retry for <desired-revisions>` | The previous operation failed for this desired revision/parameter combination. Inspect retry configuration and `Failed last sync attempt to` in conditions; follow `sync-failed.md`. The final argument is revisions, not a timeout. |
+| `Skipping auto-sync: most recent sync already to <rev>` | The previous sync **succeeded** and self-heal is disabled. Do not report this as evidence of a failed attempt. |
 | `Skipping auto-sync: sync window` | A deny window is active. Check the AppProject. |
 | `Skipping auto-sync: application is deleting` | A `deletionTimestamp` is set. |
 | Nothing at all, and the app is never refreshed | The controller is not processing this Application: wrong shard, the app is in a namespace the instance does not watch, or the controller is wedged. |

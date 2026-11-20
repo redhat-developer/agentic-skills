@@ -203,7 +203,7 @@ before selecting the appropriate router.
    | Degraded | One or more resources failed |
    | Progressing | Resources are being rolled out |
    | Suspended | Resource is paused (e.g., suspended CronJob, paused Rollout) |
-   | Missing | Resource does not exist in the cluster |
+   | Missing | On 3.4, expected non-hook resources have no live objects, or a live custom check returns Missing; use `health-missing.md` |
    | Unknown | Health assessment not available |
 
 4. Check `.status.conditions` for error messages. Common conditions:
@@ -243,6 +243,9 @@ before selecting the appropriate router.
    ```
 
 9. Inspect managed resources. List resources from `.status.resources` with non-Healthy or non-Synced status:
+   On Argo CD 3.x, resource health is normally external to the Application CR. Load
+   `resource-health.md` before interpreting these health fields; absent health is not
+   a verdict. Use its CLI/API fallback for the per-resource health inventory.
    ```bash
    kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{range .status.resources[*]}{.kind}/{.namespace}/{.name}: sync={.status}, health={.health.status}{"\n"}{end}'
    ```

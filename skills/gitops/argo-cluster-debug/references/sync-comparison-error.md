@@ -153,7 +153,14 @@ $KCTL get appproject "$PROJ" -n "$NS" -o jsonpath=''\
 | `Application referencing project <p> which does not exist` | The AppProject is absent, or lives in a different namespace from the instance. |
 | `application destination ... is not permitted in project` | The destination server or namespace is not in `spec.destinations`. Both fields are matched, and `*` in one does not cover the other. |
 | `application repo ... is not permitted in project` | `sourceRepos` does not list the repo. Matching is glob, and is literal about the `.git` suffix. |
-| `Application is not allowed in namespace` | The Application object lives in a namespace the instance does not watch. This is apps-in-any-namespace, and on an operator-managed instance the fix is a CR field — see `operator-troubleshooting.md`. |
+| `application '<name>' in namespace '<ns>' is not permitted to use project '<project>'` | The AppProject does not permit this Application's source namespace. Check its `spec.sourceNamespaces`; changing the instance's watch configuration does not fix project permission. See `operator-troubleshooting.md`. |
+
+The last message is Argo CD's
+[`ErrProjectNotPermitted`](https://github.com/argoproj/argo-cd/blob/release-3.4/util/argo/argo.go#L1180).
+An instance that does not watch an Application's namespace is a separate gate and
+may never update its status. For an unprocessed Application, verify supported instance
+scope and the effective watch configuration through `operator-troubleshooting.md`;
+do not infer the watch layer solely from an old status or substitute a different error.
 
 An AppProject rejection and a missing Kubernetes RoleBinding are independent, and both
 can be true. Fixing one leaves the other. Say which you checked.

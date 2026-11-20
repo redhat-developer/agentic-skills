@@ -125,18 +125,19 @@ eval: eval-knowledge eval-repo-audit eval-cluster-debug eval-performance-tuning 
 #   make check-numbers        # already defined above
 #
 # Add CLUSTER=1 for skills that need read-only oc access (cluster-debug,
-# performance-tuning). ONLY=17,18 re-runs a subset.
+# performance-tuning). ONLY=17,18 re-runs a subset. FIXTURES=path[,path] supplies
+# the same repository-relative evidence files to both arms, including the baseline.
 
 RUN ?= $(shell date +%F)
 MODEL ?= claude-opus-5
 
-baseline: ## Generate the baseline arm (SKILL=, RUN=, [CLUSTER=1], [ONLY=])
+baseline: ## Generate the baseline arm (SKILL=, RUN=, [CLUSTER=1], [ONLY=], [FIXTURES=])
 	@python3 scripts/run_eval_arm.py --skill $(SKILL) --condition baseline \
-		--run-id $(RUN) --model $(MODEL) $(if $(CLUSTER),--cluster,) $(if $(ONLY),--only $(ONLY),)
+		--run-id $(RUN) --model $(MODEL) $(if $(CLUSTER),--cluster,) $(if $(ONLY),--only $(ONLY),) $(if $(FIXTURES),--fixtures "$(FIXTURES)",)
 
-with-skill: ## Generate the with-skill arm (SKILL=, RUN=, [CLUSTER=1], [ONLY=])
+with-skill: ## Generate the with-skill arm (SKILL=, RUN=, [CLUSTER=1], [ONLY=], [FIXTURES=])
 	@python3 scripts/run_eval_arm.py --skill $(SKILL) --condition with-skill \
-		--run-id $(RUN) --model $(MODEL) $(if $(CLUSTER),--cluster,) $(if $(ONLY),--only $(ONLY),)
+		--run-id $(RUN) --model $(MODEL) $(if $(CLUSTER),--cluster,) $(if $(ONLY),--only $(ONLY),) $(if $(FIXTURES),--fixtures "$(FIXTURES)",)
 
 grade: ## Blind-grade both arms into benchmarks/results/ (SKILL=, RUN=, LABEL=)
 	@python3 scripts/grade_eval.py --skill $(SKILL) --run-id $(RUN) --model $(MODEL) \

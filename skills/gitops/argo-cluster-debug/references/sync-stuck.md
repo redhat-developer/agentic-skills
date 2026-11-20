@@ -127,7 +127,7 @@ controller, not this Application.
 
 When the controller is OOMKilled or restarting repeatedly, every Application it manages
 is affected and per-Application triage is a distraction.
-`skills/gitops/argo-performance-tuning` covers controller sizing and sharding.
+`../../argo-performance-tuning/SKILL.md` covers controller sizing and sharding.
 
 ## 6. Report
 

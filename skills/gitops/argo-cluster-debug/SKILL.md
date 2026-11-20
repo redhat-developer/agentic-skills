@@ -50,8 +50,7 @@ NS=openshift-gitops      # set to the instance you are working on; every command
 
 Every `kubectl` in these workflows means `$KCTL`. Prefer `oc` on OpenShift for Routes,
 SCCs and `oc adm`. Report a missing prerequisite only when neither CLI exists.
-Discover operator-managed `ArgoCD` CRs (`argoproj.io/v1beta1`) and their namespaces;
-the default OpenShift instance is in `openshift-gitops`, not `argocd`.
+Discover operator-managed `ArgoCD` CRs (`argoproj.io/v1beta1`) and their namespaces.
 
 ## How This Skill Works
 
@@ -151,8 +150,8 @@ For overlapping symptoms, route explicit operator-owned permission or watch fail
 2c. Otherwise investigate comparison/operation errors through 2b, then use 2a for a
 workload health blocker. `Synced` plus `Degraded` is a health problem; `OutOfSync` plus
 `Degraded` requires both signals checked. Keep one causal chain and distinguish
-independent findings. If the input is already correct but its generated objects are
-absent, continue with Workflow 6.
+independent findings. If the input is correct for a supported instance scope but
+generated objects are absent, investigate reconciliation through Workflow 6.
 
 ### Workflow 6: Operator / OLM triage (OpenShift GitOps)
 

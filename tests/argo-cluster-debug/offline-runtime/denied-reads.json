@@ -80,7 +80,8 @@
                 "message": "Deployment payments exceeded its progress deadline"
               }
             }
-          ]
+          ],
+          "resourceHealthSource": "inline"
         }
       },
       "stderr": null
@@ -137,6 +138,22 @@
         "apiVersion": "v1",
         "kind": "List",
         "items": []
+      },
+      "stderr": null
+    },
+    {
+      "command": "oc get configmap argocd-cmd-params-cm -n team-frontend -o json",
+      "exit_code": 0,
+      "stdout": {
+        "apiVersion": "v1",
+        "kind": "ConfigMap",
+        "metadata": {
+          "name": "argocd-cmd-params-cm",
+          "namespace": "team-frontend"
+        },
+        "data": {
+          "controller.resource.health.persist": "true"
+        }
       },
       "stderr": null
     }

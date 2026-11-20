@@ -3,57 +3,51 @@
 
 # Missing
 
-A resource is in the Application's desired state and has no live object on the cluster.
-Argo CD knows what should exist and cannot find it.
+Distinguish a resource's `Missing` assessment from the Application's aggregate health.
+These rules target Argo CD 3.4; verify the running version for older installations.
 
 ## What Missing already tells you
 
-A missing resource only affects Application health when Argo CD can health-assess its
-kind — a built-in check, a bundled Lua script, or a user override. A missing resource
-of any other kind is skipped and leaves the Application `Healthy`.
+In 3.4, a resource with no live object gets an individual `Missing` assessment, but
+that assessment is skipped when rolling health up to the Application. This applies
+to every kind, including ConfigMaps, Secrets and health-checkable workloads.
 
-Built-in Go checks exist for exactly these:
+The aggregate becomes `Missing` when non-hook resources are expected and none of
+those resources are live. Do not look for a particular missing kind as the explanation.
+A ConfigMap-only app with its only resource absent can therefore be `Missing`; a
+missing ConfigMap beside a live Deployment cannot explain aggregate `Missing` by
+itself. The missing ConfigMap may still break that Deployment's pods.
 
-| Group | Kinds |
-|---|---|
-| `apps` | Deployment, StatefulSet, ReplicaSet, DaemonSet |
-| core | Pod, Service, PersistentVolumeClaim |
-| `batch` | Job |
-| `autoscaling` | HorizontalPodAutoscaler |
-| `networking.k8s.io`, `extensions` | Ingress |
-| `apiregistration.k8s.io` | APIService |
-| `argoproj.io` | Workflow |
+A live custom health check can explicitly return `Missing` too. If live resources
+exist, inspect the actual assessment and override before concluding the aggregate
+is stale. A live child Application's `Missing` or `Unknown` status is excluded from
+its parent's rollup; that is distinct from the parent having no live objects at all.
 
-Argo CD also bundles Lua health scripts for a couple of hundred other kinds, including
-`route.openshift.io/Route` and many operator CRDs, and those count too.
+Source: [Argo CD 3.4 health aggregation](https://github.com/argoproj/argo-cd/blob/release-3.4/controller/health.go).
 
-There is **no** health assessment for ConfigMap, Secret, or ServiceAccount. If one of
-those is missing, it is not what made the Application `Missing` — keep looking. It may
-still be the cause of a *Degraded* workload that cannot start without it.
+## 1. Establish the expected set and live presence
 
-`Missing` ranks below `Degraded`. If any resource is degraded, the Application reports
-`Degraded` and the missing one is invisible at app level. Seeing `Missing` therefore
-means nothing is degraded, which narrows things usefully.
-
-Finally, a child `Application` that is `Missing` is excluded from its parent in an
-app-of-apps. A parent reporting `Missing` is missing something other than a child app.
-
-## 1. Which resources are missing
+Use `resource-health.md` for inline or tree assessments; missing inline health values
+are not evidence of missing objects. Read the full expected resource list, destination
+and comparison time:
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.resources[*]}{.kind}/{.namespace}/{.name} health={.health.status} sync={.status}{"\n"}{end}' \
-  | grep -i missing
+  -o jsonpath='destination={.spec.destination}{"\n"}reconciledAt={.status.reconciledAt}{"\n"}{range .status.resources[*]}{.group}/{.kind}/{.namespace}/{.name} sync={.status}{"\n"}{end}'
 ```
 
-Then confirm against the cluster, because "missing" is relative to where Argo CD looked:
+Check the relevant objects on the actual destination cluster, with the recorded
+namespace (or cluster scope), and distinguish a successful `NotFound` lookup from
+`Forbidden` or an inaccessible cluster:
 
 ```bash
 $KCTL get <kind> <name> -n <ns>
 ```
 
-If the object exists but Argo CD reports it missing, the problem is what Argo CD can
-see, not what exists — go to section 5.
+If any expected object is live, a single deletion cannot explain the normal
+all-absent aggregate. Check comparison freshness, custom assessments and whether the
+lookup targeted the same cluster. If objects appear absent only to Argo CD, continue
+to section 5. If all are absent, establish why sync never created or restored them.
 
 ## 2. Did a sync ever run, and did it succeed?
 
@@ -127,8 +121,9 @@ visibility rather than existence:
   comparing the object's `creationTimestamp` to `.status.reconciledAt`.
 - **The destination is a different cluster** than you are inspecting. Check
   `.spec.destination.server` before concluding anything from a local lookup.
-- **`ignoreDifferences` or a resource exclusion** hides the object from the diff.
-  Instance-wide exclusions live in `resource.exclusions` in `argocd-cm`.
+- **A resource exclusion** removes the kind from Argo CD's managed set. Instance-wide
+  exclusions live in `resource.exclusions` in `argocd-cm`. `ignoreDifferences` suppresses
+  field differences; it does not hide the existence of an entire object.
 - **Namespace mismatch.** The manifest has no namespace and the destination differs
   from where you looked.
 

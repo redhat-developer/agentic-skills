@@ -5,9 +5,9 @@
 **95.0% with the skill vs 78.8% baseline (+16.2) over 80 expectations.**
 
 > **Suite expanded — 2026-11-20.** Health, sync and operator triage now live in this
-> skill; with four offline autonomy scenarios, its suite now has 44 evals. Run 9
+> skill; with six offline regression scenarios, its suite now has 46 evals. Run 9
 > measures the pre-merge skill on evals 1–12 only; their ids and expectations are
-> unchanged. Evals 13–44 and routing through the merged entrypoint are not covered
+> unchanged. Evals 13–46 and routing through the merged entrypoint are not covered
 > by this benchmark. These scores are historical, not a measurement of the merged
 > skill. A live two-arm rerun remains pending.
 

@@ -8,7 +8,7 @@
   <img src="https://img.shields.io/badge/OpenShift-layered%20products-EE0000.svg" alt="OpenShift">
   <img src="https://img.shields.io/badge/products-1%20shipping%20%7C%203%20open-8A63D2.svg" alt="1 product shipping, 3 open">
   <img src="https://img.shields.io/badge/skills-4-8A63D2.svg" alt="4 skills">
-  <img src="https://img.shields.io/badge/evals-96-3FB950.svg" alt="96 evals">
+  <img src="https://img.shields.io/badge/evals-98-3FB950.svg" alt="98 evals">
 </p>
 
 <p align="center">
@@ -410,9 +410,9 @@ the answer is unflattering.
 | [`argo-knowledge`](benchmarks/argo-knowledge.md) | **95.4%** | 86.9% | **+8.5** | |
 | **Weighted overall** | **95.4%** | **74.5%** | **+20.9** | n=425 |
 
-**Coverage note — 2026-11-20:** cluster-debug now has 44 evals: the merged health,
-sync and operator triage suite plus four offline autonomy scenarios. Its Run 9 score
-above covers the pre-merge skill on evals 1–12 only. Evals 13–44 and routing through
+**Coverage note — 2026-11-20:** cluster-debug now has 46 evals: the merged health,
+sync and operator triage suite plus six offline regression scenarios. Its Run 9 score
+above covers the pre-merge skill on evals 1–12 only. Evals 13–46 and routing through
 the merged skill are not covered by Run 9; the weighted overall also excludes those
 new scenarios.
 

@@ -48,7 +48,7 @@ model, would target these inputs:
 | Input | Required scope | Avoid |
 |---|---|---|
 | Namespace `argocd.argoproj.io/managed-by` label | `patch` on cluster-scoped `namespaces` | Hand-written generated Roles or RoleBindings |
-| `ArgoCD.spec.sourceNamespaces` | `patch` on `argocds.argoproj.io` in the instance namespace | Editing generated `--application-namespaces` flags |
+| `ArgoCD.spec.sourceNamespaces` on a supported cluster-scoped instance | `patch` on `argocds.argoproj.io` in the instance namespace | Editing generated `--application-namespaces` flags |
 | `ArgoCD.spec.rbac.policy` | Same ArgoCD scope | Editing `argocd-rbac-cm` |
 | ArgoCD tracking, health or diff settings | Same ArgoCD scope | Editing generated `argocd-cm` |
 | AppProject policy | `patch` on `appprojects.argoproj.io` in the project's namespace | Treating project policy as Kubernetes RBAC |

@@ -29,11 +29,10 @@ reach `Degraded` on its own.
 
 ## 1. Identify the progressing resource and its message
 
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.resources[*]}{.kind}/{.namespace}/{.name} {.health.status} {.health.message}{"\n"}{end}' \
-  | grep -i progressing
-```
+Use the successful snapshot from `resource-health.md` and select explicit
+`Progressing` assessments. Retain the resource identity and health message. If resource
+health is unavailable, inspect accessible live conditions and report the evidence gap;
+an empty inline field is not an assessment.
 
 The message is diagnostic on its own. Match it before running anything else.
 

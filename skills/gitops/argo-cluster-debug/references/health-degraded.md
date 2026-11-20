@@ -4,8 +4,9 @@
 # Degraded
 
 A health check ran and reported failure. Something is wrong now, as opposed to not
-finished yet. `Degraded` outranks `Missing` in the rollup, so a `Degraded` Application
-may also contain missing resources that the status is hiding — check for both.
+finished yet. A `Degraded` Application may also contain absent resources: in Argo CD
+3.4 individual missing resources do not lower aggregate health. Check both the live
+health failure and independent missing-resource sync findings.
 
 `Degraded` with sync status `Synced` means the live state matches git. Drift is not the
 cause and syncing again changes nothing. Say that explicitly when you see it; it is the
@@ -13,11 +14,10 @@ most common wrong recommendation for this status.
 
 ## 1. Find the resource that produced the status
 
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.resources[*]}{.kind}/{.namespace}/{.name} {.health.status} {.health.message}{"\n"}{end}' \
-  | grep -i degraded
-```
+Use the successful snapshot from `resource-health.md` and select explicit
+`Degraded` assessments. Retain the resource identity and health message. If resource
+health is unavailable, inspect accessible live conditions and report the evidence gap;
+an empty inline field is not an assessment.
 
 The health message is the check's own words. Quote it in the report — it usually names
 the cause, and inventing a different one when the message disagrees is a failed
@@ -104,20 +104,19 @@ $KCTL get cm argocd-cm -n "$NS" -o yaml | grep -n "resource.customizations" -A 2
 
 Then the question is whether the script is right about the resource. Read the CR's own
 status and compare. A script asserting `Degraded` on a CR that looks healthy is a bug
-in the script, and the remediation is in `argocd-cm`, not in the workload.
+in the script. On an operator-managed instance, propose the override in the
+`ArgoCD` CR's `resourceHealthChecks`; a direct `argocd-cm` edit is reconciled away.
 
 ## 3. Check what the status is hiding
 
-`Degraded` outranks `Missing`, so re-read the resource list for anything missing or
-unhealthy that did not drive the status:
+Review the complete successful snapshot from `resource-health.md` for explicit
+unhealthy assessments and missing-resource sync findings. Inspect absent live objects
+through `health-missing.md`. Do not use a negative text filter such as `grep -v Healthy`:
+a row without health would falsely look unhealthy.
 
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.resources[*]}{.kind}/{.name} {.health.status} {.status}{"\n"}{end}' \
-  | grep -v Healthy
-```
-
-Report those as additional findings. Do not fold them into the one root cause.
+Report independent problems as additional findings. If tree access was unavailable,
+state that secondary health findings could not be fully checked instead of reporting
+that none exist.
 
 ## 4. Before suggesting anything
 

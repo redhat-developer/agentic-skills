@@ -18,7 +18,7 @@ check. An honest `Low` confidence diagnosis is useful. A question is not.
 
 ## How Argo CD computes health
 
-Resolution order for a single resource:
+Resolution order for a live resource:
 
 1. If the object has a `deletionTimestamp` and no hook finalizer — `Progressing`,
    message `Pending deletion`. Nothing else is evaluated.
@@ -30,7 +30,7 @@ Resolution order for a single resource:
 4. No check for the GVK — no health status at all. The resource is skipped. A CRD that
    Argo CD does not know how to assess never makes an Application unhealthy.
 
-### Rollup to the Application
+### Rollup to the Application (Argo CD 3.4)
 
 Application health starts at `Healthy` and becomes the **worst** health among the
 resources that count. Worst is this order, best to worst:
@@ -41,8 +41,10 @@ Two consequences that drive triage:
 
 - **`Unknown` is the worst status, not a mild one.** One resource with a broken health
   check makes the whole Application `Unknown` and hides every other problem in it.
-- **`Degraded` outranks `Missing`.** An Application with one missing resource and one
-  degraded resource reports `Degraded`. The missing one is invisible at app level.
+- **Absent live resources do not individually lower Application health.** An app
+  with a live degraded Deployment and an absent Service reports `Degraded`; keep
+  the missing Service as a separate sync finding. When non-hook resources are
+  expected but none are live, the aggregate becomes `Missing`.
 
 ### What is excluded from the rollup
 
@@ -54,11 +56,16 @@ status, and you must keep looking:
 | Resources annotated `argocd.argoproj.io/ignore-healthcheck: "true"` | Skipped outright. Note the exact spelling — `ignore-healthcheck`, one word. |
 | Hooks, and resources in the `Skip` sync phase | Skipped. A failed `PreSync` hook Job does not show as Degraded here; it shows as a failed sync operation. |
 | An Application that manages itself | Excluded so app-of-apps does not self-reference. |
-| A **missing** resource whose kind has no built-in check and no custom override | Skipped. A deleted ConfigMap or Secret does **not** make an Application `Missing`. |
+| A resource with no live object | Its individual `Missing` health is skipped, regardless of kind. The all-resources-absent aggregate rule still applies. |
 | A child `Application` that is `Missing` or `Unknown` | Excluded from the parent in an app-of-apps. |
 
-The fourth row is the one that misleads most often. If an Application is `Missing`, the
-absent resource is a kind Argo CD can health-check, or one with a custom Lua override.
+Do not search for a special health-checkable missing kind. Check the whole expected
+resource set and whether any live resources remain. A ConfigMap-only app with its
+only resource absent can be `Missing`; a missing ConfigMap alongside a live Deployment
+does not establish that aggregate state. A custom health check on a live resource may
+also explicitly return `Missing`; inspect that override when the all-absent rule does
+not explain the result. For older installations, verify the running version before
+applying this rule. See the [3.4 rollup implementation](https://github.com/argoproj/argo-cd/blob/release-3.4/controller/health.go).
 
 ## Before any check
 
@@ -94,15 +101,11 @@ CR=<name-of-the-ArgoCD-CR>
 
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
   -o jsonpath='health={.status.health.status}{"\n"}message={.status.health.message}{"\n"}sync={.status.sync.status}{"\n"}'
-
-# The resources carrying the status. The app status is the worst of these.
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.resources[*]}{.kind}/{.namespace}/{.name} health={.health.status} msg={.health.message} sync={.status}{"\n"}{end}'
 ```
 
-If `.status.resources[*].health` is empty, the instance stores resource health in the
-app tree rather than inline (`.status.resourceHealthSource: appTree`). Read it with
-`argocd app resources "$APP"` or from the API, and say so if you cannot reach it.
+Load `resource-health.md` to obtain the resource assessments before selecting a leaf.
+Argo CD 3.x normally stores those outside the Application CR. Empty inline health
+fields alone establish neither a resource fault nor the absence of one.
 
 ## Route by status
 
@@ -115,7 +118,7 @@ not any outstanding investigation of other signals.
 |---|---|---|
 | `Degraded` | `health-degraded.md` | A health check ran and reported failure |
 | `Progressing` | `health-progressing.md` | Not healthy yet, still allowed to become healthy. Sustained is the symptom |
-| `Missing` | `health-missing.md` | A resource in the desired state has no live object |
+| `Missing` | `health-missing.md` | Expected resources have no live objects in the 3.4 aggregate, or a live custom check explicitly returns Missing |
 | `Unknown` | `health-unknown.md` | Health could not be computed. Usually a broken check, not a broken workload |
 
 If the Application is `Healthy` or intentionally `Suspended`, close the health branch
@@ -166,6 +169,7 @@ self-heal on, Argo CD reverts a manual cluster change within seconds.
 
 | Topic | File | When to load |
 |---|---|---|
+| Inline versus application-tree resource health | `resource-health.md` | Before filtering any per-resource health values |
 | Degraded: a check reported failure | `health-degraded.md` | Status is `Degraded` |
 | Progressing: stuck versus still working | `health-progressing.md` | Status is `Progressing` |
 | Missing: desired but not live | `health-missing.md` | Status is `Missing` |

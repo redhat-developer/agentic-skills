@@ -138,8 +138,8 @@ kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-application-controller --tai
 
 **Debug:**
 ```bash
-# Check which resources are not synced/healthy
-kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{range .status.resources[*]}{.kind}/{.name}: sync={.status}, health={.health.status}{"\n"}{end}' | grep -v 'Synced.*Healthy'
+# Inspect sync state; obtain health separately via resource-health.md on Argo CD 3.x.
+kubectl get applications.argoproj.io <name> -n "$APP_NS" -o jsonpath='{range .status.resources[*]}{.kind}/{.name}: sync={.status}{"\n"}{end}'
 
 # Check for stuck deletions (finalizers)
 kubectl get <kind> <name> -n <namespace> -o jsonpath='{.metadata.finalizers}'
@@ -223,6 +223,8 @@ kustomize build <path>
 For Application health status, load `app-health-triage.md` and its selected leaf.
 Those health-assessment and rollup rules take precedence over the general symptom
 examples below; a workload symptom alone does not establish its Argo CD health status.
+Load `resource-health.md` to resolve inline versus external health before using a
+health filter below. Missing `.health` fields are not findings; use the CLI/API fallback.
 
 ### Degraded
 
@@ -270,7 +272,11 @@ kubectl get pods -n <namespace> -l <selector> --sort-by='.status.startTime'
 
 ### Missing
 
-**Symptoms:** Application health shows `Missing` for one or more resources.
+**Symptoms:** Application aggregate health is `Missing`. On Argo CD 3.4, absent
+live resources are individually skipped from the rollup; the normal aggregate case
+is expected non-hook resources with none live. A live custom health check can also
+return `Missing`. Use `health-missing.md` to distinguish those cases; one absent
+resource alongside a live workload does not establish aggregate `Missing`.
 
 **Causes:**
 - Resource was deleted from the cluster but exists in the desired state
@@ -280,7 +286,7 @@ kubectl get pods -n <namespace> -l <selector> --sort-by='.status.startTime'
 
 **Debug:**
 ```bash
-# Verify the resource doesn't exist
+# Verify each expected object's presence on the actual destination cluster.
 kubectl get <kind> <name> -n <namespace>
 
 # Check if the CRD exists

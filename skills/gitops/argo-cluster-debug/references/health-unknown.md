@@ -29,11 +29,10 @@ so a parent reporting `Unknown` has its own unknown resource.
 
 ## 1. Find the resource and read its message
 
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.resources[*]}{.kind}/{.namespace}/{.name} {.health.status} {.health.message}{"\n"}{end}' \
-  | grep -i unknown
-```
+Use the successful snapshot from `resource-health.md` and select explicit
+`Unknown` assessments. Retain the resource identity and health message. If resource
+health is unavailable, inspect accessible live conditions and report the evidence gap;
+an empty inline field is not an assessment.
 
 **The health message carries the error text.** When a custom Lua script fails, Argo CD
 sets the status to `Unknown` and puts the script's error in the message — a Lua
@@ -127,7 +126,7 @@ The log line `failed to get resource health for "<Kind>" with name "<name>" in
 namespace "<ns>"` is emitted for exactly this case and names the resource directly.
 
 If the controller is restarting or OOMKilled, every Application it manages is affected
-and the per-Application diagnosis is a distraction. `skills/gitops/argo-performance-tuning`
+and the per-Application diagnosis is a distraction. `../../argo-performance-tuning/SKILL.md`
 covers controller sizing.
 
 ## 6. Report
@@ -135,13 +134,12 @@ covers controller sizing.
 Name which of the five it is and quote the error text you found. Then state explicitly
 what the `Unknown` was hiding:
 
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.resources[*]}{.kind}/{.name} {.health.status}{"\n"}{end}' \
-  | grep -v -E "Healthy|Unknown"
-```
+Review the successful `resource-health.md` snapshot for explicit unhealthy states
+other than `Unknown`. Verify any missing live objects and preserve independent sync
+findings. Do not classify empty health fields through a negative grep filter.
 
-If that returns nothing, say so — it is a real finding that the only problem is the
-assessment. If it returns degraded or missing resources, report them as a second
-finding and note that they were masked, because they will become the Application's
-status as soon as the `Unknown` is resolved.
+If the complete snapshot has no other unhealthy assessments, say that none were
+observed. If health retrieval was unavailable, report that limit. Report degraded
+workloads and absent live resources separately: a degraded workload may determine
+the aggregate after `Unknown` resolves; an individually absent resource does not
+lower aggregate health in 3.4.

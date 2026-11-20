@@ -1,96 +1,139 @@
 #!/usr/bin/env python3
-"""Offline eval 44 tool: isolated shell sessions and a read-only cluster simulator.
+"""Offline eval 44: a restricted command interpreter with fresh variable state.
 
-Invoke once per shell tool call with --command and a transcript path via --log.
-This simulates shell state loss, not the Lightspeed runtime or Kubernetes API.
+--command accepts newline-separated assignments and documented oc/kubectl reads.
+Only KCTL, NS, CR, APP and APP_NS variables are supported. This is deliberately
+not a shell: there are no processes, environment access, file reads through commands,
+substitutions, control flow, pipelines, redirects, or arbitrary executable paths.
 """
 import argparse
 import json
-import os
 from pathlib import Path
+import re
 import shlex
-import subprocess
 import sys
-import tempfile
 
 
-def record(event):
-    with open(os.environ["ARGO_EVAL_LOG"], "a") as stream:
-        stream.write(json.dumps(event) + "\n")
+VARIABLES = frozenset(("KCTL", "NS", "CR", "APP", "APP_NS"))
+REFERENCE = re.compile(r"\$(?:\{([A-Za-z_][A-Za-z_0-9]*)\}|([A-Za-z_][A-Za-z_0-9]*))")
+ASSIGNMENT = re.compile(r"([A-Za-z_][A-Za-z_0-9]*)=(.*)", re.DOTALL)
 
 
-def mock_cli(args):
-    record({"event": "cli", "argv": args})
-    snapshot = json.loads(Path(__file__).with_name("manual-sync.json").read_text())
-    if args == ["config", "current-context"]:
-        print(snapshot["context"])
-        return 0
-    if args and args[0] == "api-resources":
-        print("NAME SHORTNAMES APIVERSION NAMESPACED KIND\nroutes route route.openshift.io/v1 true Route")
-        return 0
+class UnsupportedCommand(ValueError):
+    """The input is outside the simulator's explicit command language."""
 
-    # Only the documented read interface is implemented. Reject writes and unknown
-    # reads instead of pretending that an unavailable response is an empty result.
-    if not args or args[0] not in ("get", "logs"):
-        print("Offline simulator: unsupported command; only documented reads are permitted.", file=sys.stderr)
-        return 64
-    verb, rest = args[0], args[1:]
-    namespace, output, positional = None, None, []
-    while rest:
-        token, rest = rest[0], rest[1:]
-        if token in ("-n", "--namespace", "-o", "--output") and rest:
-            value, rest = rest[0], rest[1:]
-            if token in ("-n", "--namespace"):
-                namespace = value
-            else:
-                output = value
-        elif token in ("-A", "--all-namespaces") or token.startswith("--tail="):
+
+def expand(token, variables):
+    def value(match):
+        name = match.group(1) or match.group(2)
+        if name not in variables:
+            raise UnsupportedCommand(f"variable {name} is unset in this session")
+        return variables[name]
+
+    result = REFERENCE.sub(value, token)
+    if "$" in result:
+        raise UnsupportedCommand("unsupported variable expansion")
+    return result
+
+
+def parse_commands(command):
+    """Resolve a whole session before producing any simulated CLI observations."""
+    variables, commands = {}, []
+    for line in command.splitlines():
+        if not line.strip() or line.lstrip().startswith("#"):
             continue
+        # Reject shell syntax even inside quotes: the supported language only needs
+        # identifiers, resource names, literal flags and the five variables above.
+        if any(char in line for char in ";|&<>`()\\"):
+            raise UnsupportedCommand("shell operators and substitutions are unsupported")
+        try:
+            tokens = shlex.split(line, comments=True)
+        except ValueError as error:
+            raise UnsupportedCommand(str(error)) from error
+        if not tokens:
+            continue
+        assignment = ASSIGNMENT.fullmatch(tokens[0])
+        if assignment:
+            name, value = assignment.groups()
+            if len(tokens) != 1 or name not in VARIABLES:
+                raise UnsupportedCommand("use a standalone assignment to a supported variable")
+            variables[name] = expand(value, variables)
+            continue
+        args = [expand(token, variables) for token in tokens]
+        if args[0] not in ("oc", "kubectl"):
+            raise UnsupportedCommand("only the simulated oc and kubectl commands are available")
+        commands.append(args)
+    if not commands:
+        raise UnsupportedCommand("session must include a documented read command")
+    return commands
+
+
+def mock_cli(args, snapshot):
+    if args == ["config", "current-context"]:
+        return snapshot["context"]
+    if args in (["api-resources"], ["api-resources", "--api-group=route.openshift.io"]):
+        return "NAME SHORTNAMES APIVERSION NAMESPACED KIND\nroutes route route.openshift.io/v1 true Route"
+    if not args or args[0] not in ("get", "logs"):
+        raise UnsupportedCommand("only documented reads are permitted")
+
+    verb, rest = args[0], list(args[1:])
+    flags, positional = {}, []
+    aliases = {"-n": "namespace", "--namespace": "namespace", "-o": "output", "--output": "output"}
+    while rest:
+        token = rest.pop(0)
+        if token in aliases:
+            key = aliases[token]
+            if not rest or key in flags:
+                raise UnsupportedCommand("missing or repeated flag value")
+            flags[key] = rest.pop(0)
+        elif token in ("-A", "--all-namespaces"):
+            if "all" in flags:
+                raise UnsupportedCommand("repeated all-namespaces flag")
+            flags["all"] = True
+        elif token == "--tail=50":
+            if "tail" in flags:
+                raise UnsupportedCommand("repeated tail flag")
+            flags["tail"] = 50
+        elif token.startswith("-"):
+            raise UnsupportedCommand(f"unsupported flag: {token}")
         else:
             positional.append(token)
-    if verb == "get" and positional == ["applications.argoproj.io", "legacy-erp"] and namespace == "team-frontend" and output == "json":
-        print(json.dumps(snapshot["observations"][0]["stdout"]))
-        return 0
-    if verb == "get" and positional == ["argocd"] and output == "json":
-        print(json.dumps({"apiVersion": "v1", "kind": "List", "items": [{
+
+    if verb == "get" and positional == ["applications.argoproj.io", "legacy-erp"] and flags == {"namespace": "team-frontend", "output": "json"}:
+        return json.dumps(snapshot["observations"][0]["stdout"])
+    if verb == "get" and positional == ["argocd"] and flags == {"all": True, "output": "json"}:
+        return json.dumps({"apiVersion": "v1", "kind": "List", "items": [{
             "apiVersion": "argoproj.io/v1beta1", "kind": "ArgoCD",
             "metadata": {"name": "team-argocd", "namespace": "team-frontend"},
-            "status": {"phase": "Available"}}]}))
-        return 0
-    if verb == "logs" and positional == ["statefulset/team-argocd-application-controller"] and namespace == "team-frontend":
-        print(snapshot["observations"][1]["stdout"])
-        return 0
-    print("Offline simulator: response unavailable. Use the documented resource, namespace and -o json interface.", file=sys.stderr)
-    return 64
+            "status": {"phase": "Available"}}]})
+    if verb == "logs" and positional == ["statefulset/team-argocd-application-controller"] and flags == {"namespace": "team-frontend", "tail": 50}:
+        return snapshot["observations"][1]["stdout"]
+    raise UnsupportedCommand("response unavailable; use the documented resource, namespace and flags")
 
 
 def main():
-    if len(sys.argv) > 1 and sys.argv[1] == "--mock-cli":
-        return mock_cli(sys.argv[2:])
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--log", required=True)
     parser.add_argument("--command", required=True)
     args = parser.parse_args()
-    env = dict(os.environ)
-    for name in ("KCTL", "NS", "CR", "APP", "APP_NS"):
-        env.pop(name, None)
-    env["ARGO_EVAL_LOG"] = str(Path(args.log).resolve())
-    os.environ["ARGO_EVAL_LOG"] = env["ARGO_EVAL_LOG"]
-    with tempfile.TemporaryDirectory(prefix="argo-offline-cli-") as directory:
-        wrapper = "#!/bin/sh\nexec " + shlex.quote(sys.executable) + " " + shlex.quote(str(Path(__file__).resolve())) + ' --mock-cli "$@"\n'
-        for name in ("oc", "kubectl"):
-            path = Path(directory) / name
-            path.write_text(wrapper)
-            path.chmod(0o755)
-        env["PATH"] = directory + os.pathsep + os.environ.get("PATH", os.defpath)
-        record({"event": "shell", "command": args.command})
-        result = subprocess.run(["/bin/sh", "-c", args.command], env=env,
-                                capture_output=True, text=True, timeout=30)
-        record({"event": "result", "exit_code": result.returncode,
-                "stdout": result.stdout, "stderr": result.stderr})
-        print(result.stdout, end="")
-        print(result.stderr, end="", file=sys.stderr)
-        return result.returncode
+    events = [{"event": "session", "command": args.command}]
+    try:
+        commands = parse_commands(args.command)
+        snapshot = json.loads(Path(__file__).with_name("manual-sync.json").read_text())
+        # Validate every requested read before publishing any output. Unsupported
+        # requests fail closed, with no partial success and no external fallback.
+        outputs = [mock_cli(command[1:], snapshot) for command in commands]
+        events.extend({"event": "cli", "argv": command[1:]} for command in commands)
+        stdout, stderr, code = "\n".join(outputs) + "\n", "", 0
+    except UnsupportedCommand as error:
+        stdout, stderr, code = "", f"Offline simulator: {error}.\n", 64
+    events.append({"event": "result", "exit_code": code, "stdout": stdout, "stderr": stderr})
+    with Path(args.log).open("a") as stream:
+        for event in events:
+            stream.write(json.dumps(event) + "\n")
+    print(stdout, end="")
+    print(stderr, end="", file=sys.stderr)
+    return code
 
 
 if __name__ == "__main__":

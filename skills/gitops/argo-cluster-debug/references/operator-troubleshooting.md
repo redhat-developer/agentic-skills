@@ -72,12 +72,12 @@ checks and outstanding sync or health findings for the final report.
 |---|---|---|
 | Sync fails `forbidden` or `Unauthorized`; the controller cannot write to the destination namespace | Destination-namespace RBAC | `operator-rbac.md` |
 | An `Application` object outside the Argo CD namespace is ignored — no status at all | Apps in any namespace | `operator-apps-in-any-namespace.md` |
-| `Application is not allowed in namespace`, or UI access disappeared after enabling `sourceNamespaces` | Apps in any namespace and its AppProject/UI policy layers | `operator-apps-in-any-namespace.md` |
+| `application '<name>' in namespace '<ns>' is not permitted to use project '<project>'`, or UI access disappeared after enabling `sourceNamespaces` | Apps in any namespace and its AppProject/UI policy layers | `operator-apps-in-any-namespace.md` |
 
-Each is a different "permission denied", and the distinguishing evidence is cheap: an
-empty `.status` means the Application is not being watched, while a `forbidden` sync
-means the controller lacks Kubernetes rights. Establish which before loading a
-reference.
+Each is a different permission failure. An empty `.status` is consistent with an
+unprocessed Application, while an API authorization denial in a current sync identifies
+the controller's Kubernetes rights. Stored status can be stale: use current instance
+configuration, reconciliation timestamps and the exact error before choosing a cause.
 
 If the symptom is not operator-owned, hand off rather than guessing. Sync state is
 `app-sync-triage.md`, health is `app-health-triage.md`.
@@ -206,25 +206,27 @@ State the impact of the recommendation:
 
 ## Topic: apps in any namespace
 
-An `Application` object created outside the Argo CD namespace is ignored — not
-rejected, not errored, simply never read. An entirely empty `.status` is the tell.
+An Application outside the instance's watch scope may remain unprocessed. A newly
+created object can have empty status; an older object can retain stale status.
 
-The operator owns this through `.spec.sourceNamespaces` on the `ArgoCD` CR, from which
-it derives the `argocd.argoproj.io/managed-by-cluster-argocd` label on each permitted
-namespace, the Role and RoleBinding granting rights on `applications.argoproj.io`
-there, and the `--application-namespaces` arguments. All four are reconciled. Do not
-set the label, write the RBAC, or edit the flag.
+This feature requires a **cluster-scoped instance**. Confirm the instance namespace
+against `ARGOCD_CLUSTER_CONFIG_NAMESPACES` in the operator Deployment before judging
+missing source-namespace objects. On a supported instance the operator derives the
+`argocd.argoproj.io/managed-by-cluster-argocd` label, source-namespace RBAC and workload
+arguments from `ArgoCD.spec.sourceNamespaces`. For a namespace-scoped instance, absent
+source-namespace RBAC is expected; it does not establish an operator fault. Do not
+set generated labels, write generated RBAC, or edit workload arguments manually.
 
-Two layers must agree, and they fail differently — which tells you which is missing
-without reading either:
+After the scope prerequisite, two layers must agree. Read their current configuration
+and correlate it with these symptoms:
 
 | Missing | Symptom |
 |---|---|
-| The namespace is not in `ArgoCD.spec.sourceNamespaces` | No `.status` at all |
-| The namespace is not in the AppProject's `spec.sourceNamespaces` | A status with `InvalidSpecError: Application is not allowed in namespace` |
+| The namespace is not in the instance's effective watch configuration | A new Application may have empty status; old status can remain after watching stops |
+| The namespace is not in the AppProject's `spec.sourceNamespaces` | `InvalidSpecError` with `application '<name>' in namespace '<ns>' is not permitted to use project '<project>'` |
 
-The AppProject is not operator-owned, so that half is an ordinary edit. Say which layer
-you are recommending a change to.
+The AppProject is not operator-generated but can be managed by another Application.
+Recommend changes in its authoritative desired state, and name the layer being changed.
 
 Load `operator-apps-in-any-namespace.md`.
 
@@ -240,6 +242,6 @@ authorized stage. Diagnosis does not execute them.
 | Topic | File | When to load |
 |-------|------|----------------|
 | Destination-namespace RBAC — decision order, commands, and the two grant paths | `operator-rbac.md` | The symptom is a `forbidden` or `Unauthorized` sync, or a question about `managed-by` or `NamespaceManagement` |
-| Apps in any namespace — `sourceNamespaces`, the two layers, and addressing Applications afterwards | `operator-apps-in-any-namespace.md` | An Application outside the instance namespace has no status, or `Application is not allowed in namespace` |
+| Apps in any namespace — scope prerequisite, watch/project layers and Application addressing | `operator-apps-in-any-namespace.md` | An Application outside the instance namespace is unprocessed, has a project-permission error, or disappeared from the UI |
 | Application **sync** state triage | `app-sync-triage.md` | The symptom is `OutOfSync`, a failed or stuck sync, or `Synced` while the cluster is wrong |
 | Application **health** status triage | `app-health-triage.md` | The symptom is `Degraded`, `Progressing`, `Missing`, or health `Unknown` |
