@@ -32,9 +32,6 @@ relative to the repository root:
 - `.skills/gitops/argo-cluster-debug/SKILL.md` — Live cluster debugging, plus Argo Rollouts runtime control (promote / abort / retry)
 - `.skills/gitops/argo-repo-audit/SKILL.md` — Repository auditing for best practices and security
 - `.skills/gitops/argo-performance-tuning/SKILL.md` — Diagnose and tune Argo CD performance and scale
-- `.skills/gitops/argo-app-health-triage/SKILL.md` — Triage an Application by health status: Degraded, Progressing, Missing, Unknown
-- `.skills/gitops/argo-app-sync-triage/SKILL.md` — Triage an Application by sync state: OutOfSync, Unknown, stuck, failed, falsely Synced
-- `.skills/gitops/argo-operator/SKILL.md` — Behavior the OpenShift GitOps operator owns, where the fix is an operator input
 
 Read the skill file first, then follow its workflow phases step by step.
 
@@ -55,7 +52,8 @@ Examples:
 ### Live Cluster Debugging
 
 When users report issues with Argo resources on a live cluster, need to inspect
-resource status, or want to troubleshoot failures — load and apply the
+resource status, or want health/sync triage, operator-owned permission diagnosis,
+or investigation of Applications ignored with no status — load and apply the
 **argo-cluster-debug** skill workflows.
 
 Examples:

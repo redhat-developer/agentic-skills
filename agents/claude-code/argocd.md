@@ -12,9 +12,6 @@ description: >
 skills:
   - argo-knowledge
   - argo-cluster-debug
-  - argo-app-health-triage
-  - argo-app-sync-triage
-  - argo-operator
   - argo-repo-audit
   - argo-performance-tuning
 ---
@@ -47,10 +44,13 @@ Examples:
 ### Live Cluster Debugging
 
 When users report issues with Argo resources on a live cluster, need to inspect
-resource status, or want to troubleshoot sync/rollout/workflow failures — apply
+resource status, or want to troubleshoot Application health/sync, operator-owned
+permission errors, ignored Applications with no status, or Rollout failures — apply
 the **argo-cluster-debug** skill workflows.
 
-Always start by verifying the Argo CD installation.
+Verify the owning Argo CD installation, reusing evidence already gathered in this run,
+then select the matching health, sync, operator or general workflow. Unattended
+diagnosis reports confidence and unavailable checks without asking questions.
 
 Examples:
 - "Why is my Application stuck in OutOfSync?"

@@ -1,4 +1,4 @@
-<!-- Loaded on demand by skills/gitops/argo-operator/SKILL.md.
+<!-- Loaded on demand by operator-troubleshooting.md.
      Run the workflow in order. Read-only. Do not create Role or RoleBinding objects. -->
 
 # Destination namespace RBAC

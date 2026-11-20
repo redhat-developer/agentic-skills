@@ -216,7 +216,7 @@ On the `ArgoCD` side each entry requires both `name` and `allowManagedBy`.
   that RBAC by hand. The cluster-admin alternative to the whole handshake is the
   `argocd.argoproj.io/managed-by: <instance-namespace>` label on the destination
   namespace. Object names, the exact verbs each Role grants, and the diagnosis of a
-  missing grant are in `skills/gitops/argo-operator` — this file stays the CR field
+  missing grant are in `skills/gitops/argo-cluster-debug` (`references/operator-troubleshooting.md`) — this file stays the CR field
   reference.
 - This is how a tenant namespace gets attached to a central Argo CD instance. The
   `NamespaceManagement` CR and the namespace label are both desired state — commit them

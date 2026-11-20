@@ -1,4 +1,4 @@
-<!-- Loaded on demand by skills/gitops/argo-operator/SKILL.md when an Application
+<!-- Loaded on demand by operator-troubleshooting.md when an Application
      object outside the Argo CD namespace is ignored. Read-only. Do not create Role or
      RoleBinding objects. -->
 
@@ -26,7 +26,7 @@ They answer different questions, and a deployment into another team's namespace 
 | Symptom when missing | The Application is ignored entirely — no status, not in the UI | The Application syncs and fails `forbidden` |
 
 If the Application has no status, you are in this file. If it has a status and the sync
-is `forbidden`, you are in `destination-namespace-rbac.md`.
+is `forbidden`, you are in `operator-rbac.md`.
 
 ## 1. Confirm the Application is being ignored
 
@@ -99,7 +99,7 @@ $KCTL get argocd "$CR" -n "$NS" \
 ```
 
 A `generation` ahead of `observedGeneration` confirms it. Report that and hand off to
-Workflow 6 in `skills/gitops/argo-cluster-debug`, which owns operator and OLM triage —
+Workflow 6 in `../SKILL.md`, which owns operator and OLM triage —
 pod restarts, CSV phase, InstallPlan, and the conversion webhook.
 
 One cause is worth checking before you hand off, because it looks identical and is not
@@ -138,7 +138,7 @@ recommending a change to, because one is a CR edit and the other is not.
 
 Once it works, the Application is referenced by namespace everywhere:
 
-Addressing syntax only — this skill is read-only and runs neither of these. Report
+Addressing syntax only — this workflow is read-only and runs neither of these. Report
 the form the team should use; do not sync a cluster you were asked to diagnose.
 
 ```text
@@ -171,4 +171,4 @@ reverted.
 Finally, note whether the destination namespace is also granted. Applications in a
 tenant namespace nearly always deploy into that same namespace, and fixing only
 `sourceNamespaces` moves the symptom from "ignored" to "forbidden" rather than
-resolving it. `destination-namespace-rbac.md` is the next step when it is not granted.
+resolving it. `operator-rbac.md` is the next step when it is not granted.

@@ -28,13 +28,14 @@
 > (`namespace:` on an Application's **destination** is a different field — that one is the
 > workload's namespace and is unrelated.)
 
-Symptom-to-cause mappings organized by Argo component. Read this in full before starting any debugging workflow.
+Symptom-to-cause mappings organized by Argo component. Read the relevant section only when a selected workflow is inconclusive. Dedicated
+health and sync routers own their status rules.
 
 ---
 
 ## Application Sync Failures
 
-> When the sync state itself is the symptom, `skills/gitops/argo-app-sync-triage` owns
+> When the sync state itself is the symptom, `app-sync-triage.md` owns
 > the diagnosis and routes by state — `OutOfSync`, sync `Unknown`, stuck, failed, or
 > `Synced` but wrong. Load it instead of working down this section. The tables below
 > remain useful as a symptom index alongside it.
@@ -71,7 +72,7 @@ kustomize build <path>
 
 **Causes:**
 - The Argo CD application controller ServiceAccount lacks RBAC to create/update the target resource
-- On an operator-managed namespace-scoped instance, the destination namespace was never granted. The operator creates that Role and RoleBinding from `argocd.argoproj.io/managed-by` or from a completed `NamespaceManagement` handshake. Do not create them by hand. Use `skills/gitops/argo-operator` for this case.
+- On an operator-managed namespace-scoped instance, the destination namespace was never granted. The operator creates that Role and RoleBinding from `argocd.argoproj.io/managed-by` or from a completed `NamespaceManagement` handshake. Do not create them by hand. Use `operator-troubleshooting.md` for this case.
 - AppProject `clusterResourceWhitelist` or `namespaceResourceBlacklist` blocks the resource
 - Destination namespace not allowed by the AppProject
 
@@ -94,7 +95,7 @@ kubectl auth can-i create <resource> \
 
 On an operator-managed instance, a missing Role in the destination namespace is fixed
 by the `argocd.argoproj.io/managed-by` label or by `NamespaceManagement`, not by
-applying a RoleBinding. Load `skills/gitops/argo-operator` before
+applying a RoleBinding. Load `operator-troubleshooting.md` before
 recommending any RBAC manifest. The objects the operator owns are named
 `<cr-name>-argocd-application-controller` and `<cr-name>-argocd-server`.
 
@@ -218,6 +219,10 @@ kustomize build <path>
 ---
 
 ## Health Check Issues
+
+For Application health status, load `app-health-triage.md` and its selected leaf.
+Those health-assessment and rollup rules take precedence over the general symptom
+examples below; a workload symptom alone does not establish its Argo CD health status.
 
 ### Degraded
 
@@ -376,8 +381,8 @@ kubectl get applications.argoproj.io -n "$NS" -o jsonpath='{range .items[*]}{.me
 # Check requeueAfterSeconds
 kubectl get applicationset <name> -n "$NS" -o jsonpath='{.spec.generators[*].scmProvider.requeueAfterSeconds}'
 
-# Force reconciliation by touching the ApplicationSet
-kubectl annotate applicationset <name> -n "$NS" refreshed-at="$(date +%s)" --overwrite
+# Compare recent controller activity without mutating the ApplicationSet
+kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-applicationset-controller --tail=100
 ```
 
 ### Progressive sync stuck

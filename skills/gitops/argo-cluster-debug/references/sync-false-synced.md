@@ -1,4 +1,4 @@
-<!-- Loaded on demand by skills/gitops/argo-app-sync-triage/SKILL.md when the status is
+<!-- Loaded on demand by app-sync-triage.md when the status is
      Synced but the cluster does not match expectations. Read-only. -->
 
 # Synced but wrong
@@ -31,7 +31,7 @@ elsewhere, or not watching this Application at all.
 Then confirm the synced revision is the commit you expect. The most common version of
 "Synced but wrong" is simply that `status.sync.revision` is an older commit than the
 branch head, which makes `Synced` entirely accurate and the expectation wrong.
-`references/outofsync.md` section 4 covers revision resolution.
+`sync-outofsync.md` section 4 covers revision resolution.
 
 ## 2. Is Argo CD looking at the object you are looking at?
 

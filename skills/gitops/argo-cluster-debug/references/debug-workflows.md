@@ -64,9 +64,9 @@ Use when: user asks if Argo CD is installed, reports general Argo CD failures, o
    ```
 
    Set `NS` to the instance you are debugging and use it for every command below. **There
-   is frequently more than one instance** — if so, confirm with the user which one before
-   continuing, and note that an ArgoCD CR *named* `argocd` may live in a namespace that is
-   not `argocd`.
+   is frequently more than one instance** — investigate candidate instances separately
+   and label each finding. Do not ask for a selection in an unattended run. An ArgoCD
+   CR *named* `argocd` may live in a namespace that is not `argocd`.
 
    ```bash
    NS=<argo-cd-namespace>    # e.g. openshift-gitops, argocd, team-x-gitops
@@ -166,7 +166,12 @@ Use when: user asks if Argo CD is installed, reports general Argo CD failures, o
 
 ## Workflow 2: Application Debugging
 
-Use when: user reports Application sync failure, health degradation, OutOfSync, or unknown status.
+Use for Application questions outside the dedicated triage routes. For health status,
+load `app-health-triage.md`; for sync status or operation failures, load
+`app-sync-triage.md`; for operator-owned permission or watch failures, load
+`operator-troubleshooting.md`. These paths are relative to this reference directory.
+Continue there with the evidence already gathered. Do not complete the generic steps
+before selecting the appropriate router.
 
 **Steps:**
 
@@ -299,7 +304,8 @@ Use when: user reports ApplicationSet not generating Applications, generating wr
    kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-applicationset-controller --tail=200
    ```
 
-6. If some Applications are generated but failing, debug each one using Workflow 2.
+6. If generated Applications are failing, select the matching Workflow 2 route in
+   `../SKILL.md` for each Application; reuse the installation evidence.
 
 7. For progressive sync issues, check `spec.strategy`:
    ```bash

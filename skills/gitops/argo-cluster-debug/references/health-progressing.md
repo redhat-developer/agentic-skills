@@ -1,4 +1,4 @@
-<!-- Loaded on demand by skills/gitops/argo-app-health-triage/SKILL.md when the
+<!-- Loaded on demand by app-health-triage.md when the
      Application health status is Progressing. Read-only. -->
 
 # Progressing
@@ -84,7 +84,7 @@ $KCTL get events -n <ns> --sort-by=.lastTimestamp | tail -25
 | Pending with an unbound PVC | Check the PVC; `WaitForFirstConsumer` with an unschedulable pod is a deadlock both sides of |
 | Pending, `exceeded quota` event | ResourceQuota in the namespace |
 | Running, `ready=false`, no restarts | Readiness probe failing or still in `initialDelaySeconds` |
-| Running, `ready=false`, with restarts | This is a crash loop — it belongs in `references/degraded.md`, and the app status should be `Degraded` unless something worse is masking it |
+| Running, `ready=false`, with restarts | This is a crash loop — it belongs in `health-degraded.md`, and the app status should be `Degraded` unless something worse is masking it |
 
 Also check PodDisruptionBudgets when old replicas are pending termination — a PDB that
 cannot be satisfied blocks eviction indefinitely.
@@ -107,7 +107,7 @@ recommending anything:
 | Job | A Job with no `Complete` or `Failed` condition is `Progressing`. A legitimately long job looks identical to a hung one — check the pod's logs and age, not just the Job |
 | Pod with `restartPolicy: OnFailure` or `Never` | Running is `Progressing`, not `Healthy`, because these pods are expected to terminate. Hook pods and Job pods are in this class |
 | PVC | Pending is `Progressing`. With `WaitForFirstConsumer` this is correct and resolves when a consumer pod is scheduled |
-| Rollout paused at a step | An Argo Rollouts canary awaiting promotion is working as configured. `skills/gitops/argo-cluster-debug` has the Rollout workflow |
+| Rollout paused at a step | An Argo Rollouts canary awaiting promotion is working as configured. `../SKILL.md` has the Rollout workflow |
 | Service of type LoadBalancer | Progressing until an ingress IP is assigned; on a cluster with no load balancer provider this never completes |
 
 For these, the correct output is frequently a diagnosis with **no action required**.

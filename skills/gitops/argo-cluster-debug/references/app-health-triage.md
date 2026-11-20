@@ -1,31 +1,18 @@
----
-name: argo-app-health-triage
-description: >
-  Triage an Argo CD Application by its health status — Degraded, Progressing, Missing,
-  or Unknown — and name one root cause backed by cluster evidence. Explains how Argo CD
-  computes health (custom Lua first, then built-in per-kind checks) and how child health
-  rolls up to the Application, including the resources that are excluded from the rollup
-  and never affect it. Routes to one workflow per status. Use when an Application's
-  health status is the symptom, when an automated diagnosis has been triggered by a
-  sustained unhealthy status, or when the reported status does not match what the
-  workloads look like. Read-only. Not for sync status, drift, or ApplicationSet and
-  Rollout health.
-license: MIT
-compatibility: Requires oc or kubectl
----
-
 # Argo CD Application health triage
+
+Load through Workflow 2a in `../SKILL.md`. Reuse the installation and instance evidence
+already gathered. File paths below are relative to this reference directory.
 
 Health status, not sync status. An Application can be `Synced` and `Degraded` at the
 same time: the live state matches git and the workload is still broken. When that is
 what you see, drift is not the cause and reconciling again will not help.
 
-This skill is read-only. Diagnose and report. Do not apply changes.
+This workflow is read-only. Diagnose and report. Do not apply changes.
 
-## You are probably running non-interactively
+## Unattended diagnosis
 
-This skill is written to be usable by an automated diagnosis run with no human in the
-loop. If no one can answer a question, do not ask one. Gather the evidence you can
+When this workflow is used by an automated diagnosis run with no human in the
+loop, do not ask questions. Gather the evidence you can
 reach, name the most probable cause, and state your confidence and what you could not
 check. An honest `Low` confidence diagnosis is useful. A question is not.
 
@@ -119,17 +106,21 @@ app tree rather than inline (`.status.resourceHealthSource: appTree`). Read it w
 
 ## Route by status
 
-Load exactly one. Do not run a generic workflow first.
+Start with the reference matching the health status. Follow other references for
+secondary findings or sync/operator causes exposed by the evidence. Reuse completed
+checks; do not restart a generic workflow. A leaf's stop/return closes that branch,
+not any outstanding investigation of other signals.
 
 | Status | Reference | What it is |
 |---|---|---|
-| `Degraded` | `references/degraded.md` | A health check ran and reported failure |
-| `Progressing` | `references/progressing.md` | Not healthy yet, still allowed to become healthy. Sustained is the symptom |
-| `Missing` | `references/missing.md` | A resource in the desired state has no live object |
-| `Unknown` | `references/unknown.md` | Health could not be computed. Usually a broken check, not a broken workload |
+| `Degraded` | `health-degraded.md` | A health check ran and reported failure |
+| `Progressing` | `health-progressing.md` | Not healthy yet, still allowed to become healthy. Sustained is the symptom |
+| `Missing` | `health-missing.md` | A resource in the desired state has no live object |
+| `Unknown` | `health-unknown.md` | Health could not be computed. Usually a broken check, not a broken workload |
 
-If the Application is `Healthy` or `Suspended`, there is nothing to triage. Say so and
-return — both are recovery states.
+If the Application is `Healthy` or intentionally `Suspended`, close the health branch
+without inventing a fault. Continue any outstanding sync or operator investigation;
+a healthy workload does not establish that those signals are clear.
 
 When more than one resource is unhealthy, the Application status comes from the worst.
 Diagnose that one, and list the others as additional findings rather than merging them
@@ -144,7 +135,7 @@ Deployment only becomes `Degraded` when its `Progressing` condition reaches
 minutes. So for the first ten minutes, a Deployment whose pods cannot start and a
 Deployment that is rolling out normally report the same health status.
 
-Never read `Progressing` as "it is still working." Go to `references/progressing.md`
+Never read `Progressing` as "it is still working." Go to `health-progressing.md`
 and check the pods.
 
 ## Output
@@ -175,10 +166,10 @@ self-heal on, Argo CD reverts a manual cluster change within seconds.
 
 | Topic | File | When to load |
 |---|---|---|
-| Degraded: a check reported failure | `references/degraded.md` | Status is `Degraded` |
-| Progressing: stuck versus still working | `references/progressing.md` | Status is `Progressing` |
-| Missing: desired but not live | `references/missing.md` | Status is `Missing` |
-| Unknown: health could not be computed | `references/unknown.md` | Status is `Unknown` |
-| Application **sync state** triage | `skills/gitops/argo-app-sync-triage` | The symptom is `OutOfSync`, a stuck or failed sync, or `Synced` while the cluster is wrong. Health and sync are independent — an app can be `Synced` and `Degraded` |
-| Operator-owned behavior — destination RBAC, apps-in-any-namespace, and UI RBAC | `skills/gitops/argo-operator` | A sync is `forbidden` and resources never appeared, or the Application is ignored entirely |
-| Generic Application, ApplicationSet, and Rollout debugging | `skills/gitops/argo-cluster-debug` | The symptom is not an Application health status |
+| Degraded: a check reported failure | `health-degraded.md` | Status is `Degraded` |
+| Progressing: stuck versus still working | `health-progressing.md` | Status is `Progressing` |
+| Missing: desired but not live | `health-missing.md` | Status is `Missing` |
+| Unknown: health could not be computed | `health-unknown.md` | Status is `Unknown` |
+| Application **sync state** triage | `app-sync-triage.md` | The symptom is `OutOfSync`, a stuck or failed sync, or `Synced` while the cluster is wrong. Health and sync are independent — an app can be `Synced` and `Degraded` |
+| Operator-owned behavior — destination RBAC, apps-in-any-namespace, and UI RBAC | `operator-troubleshooting.md` | A sync is `forbidden` and resources never appeared, or the Application is ignored entirely |
+| Generic Application, ApplicationSet, and Rollout debugging | `../SKILL.md` | The symptom is not an Application health status |

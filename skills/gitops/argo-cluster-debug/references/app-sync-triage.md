@@ -1,36 +1,26 @@
----
-name: argo-app-sync-triage
-description: >
-  Triage an Argo CD Application by its sync state — OutOfSync, sync status Unknown, a
-  sync operation that is stuck, one that Failed or Errored, or Synced while the cluster
-  is visibly wrong — and name one root cause backed by cluster evidence. Explains how
-  Argo CD computes the diff (desired manifests versus live, after ignoreDifferences and
-  the resource tracking method) and why auto-sync declines to run. Routes to one
-  workflow per state. Use when the sync status or a sync operation is the symptom, when
-  a change was pushed to git and did not reach the cluster, or when an automated
-  diagnosis was triggered by a sustained OutOfSync. Read-only. Not for health status,
-  which is skills/gitops/argo-app-health-triage.
-license: MIT
-compatibility: Requires oc or kubectl
----
-
 # Argo CD Application sync triage
+
+Load through Workflow 2b in `../SKILL.md`. Reuse the installation and instance evidence
+already gathered. File paths below are relative to this reference directory.
 
 Sync status, not health status. An Application can be `Synced` and `Degraded` at the
 same time — the live state matches git and the workload is still broken — and it can be
 `OutOfSync` and `Healthy`, where everything is running and simply is not what git says.
 Reconciling fixes only the second one.
 
-If the symptom is that a workload is broken rather than that it does not match git, stop
-and use `skills/gitops/argo-app-health-triage` instead.
+For a workload-only failure with no sync blocker, use `app-health-triage.md`.
+For mixed symptoms, investigate comparison and operation errors first, then follow
+workload blockers into health triage and operator-owned permission failures into
+`operator-troubleshooting.md`. Carry forward the evidence and outstanding checks;
+a handoff continues this diagnosis and does not discard independent findings.
 
-This skill is read-only. Diagnose and report. Do not apply changes, and do not run
+This workflow is read-only. Diagnose and report. Do not apply changes, and do not run
 `argocd app sync`.
 
-## You are probably running non-interactively
+## Unattended diagnosis
 
-This skill is written to be usable by an automated diagnosis run with no human in the
-loop. If no one can answer a question, do not ask one. Gather the evidence you can
+When this workflow is used by an automated diagnosis run with no human in the
+loop, do not ask questions. Gather the evidence you can
 reach, name the most probable cause, and state your confidence and what you could not
 check. An honest `Low` confidence diagnosis is useful. A question is not.
 
@@ -127,21 +117,25 @@ Compare `startedAt` against now before calling anything stuck.
 
 ## Route by state
 
-Check in this order and load exactly one. Do not run a generic workflow first.
+Check in this order and load the first matching reference. Follow additional
+references when its evidence identifies another blocker; do not restart a generic
+workflow or repeat completed checks. A leaf's stop/return ends that branch only:
+finish any outstanding health or operator investigation before the final report.
 
 | Check | State | Reference |
 |---|---|---|
-| 1 | Sync status is `Unknown`, or there is a `ComparisonError` or `InvalidSpecError` condition | `references/comparison-error.md` |
-| 2 | `operationState.phase` is `Running` or `Terminating` and has been for a while | `references/sync-stuck.md` |
-| 3 | `operationState.phase` is `Failed` or `Error` | `references/sync-failed.md` |
-| 4 | Sync status is `OutOfSync` and no operation is running | `references/outofsync.md` |
-| 5 | Sync status is `Synced` but the cluster does not match what you expect | `references/false-synced.md` |
+| 1 | Sync status is `Unknown`, or there is a `ComparisonError` or `InvalidSpecError` condition | `sync-comparison-error.md` |
+| 2 | `operationState.phase` is `Running` or `Terminating` and has been for a while | `sync-stuck.md` |
+| 3 | `operationState.phase` is `Failed` or `Error` | `sync-failed.md` |
+| 4 | Sync status is `OutOfSync` and no operation is running | `sync-outofsync.md` |
+| 5 | Sync status is `Synced` but the cluster does not match what you expect | `sync-false-synced.md` |
 
 Order matters. A `ComparisonError` makes every other reading meaningless, because the
 diff was never computed — check 1 first even when the louder symptom is `OutOfSync`.
 
-If the Application is `Synced`, the last operation `Succeeded`, and the cluster is
-correct, there is nothing to triage. Say so and return.
+If the Application is `Synced`, the last operation `Succeeded`, and the cluster matches
+the intended state, close the sync branch. Continue any outstanding health or operator
+checks; matching Git does not prove a workload is healthy.
 
 ## Sustained OutOfSync is usually one of four things
 
@@ -157,7 +151,7 @@ Knowing the shape saves a wasted pass through the per-resource diff:
 
 The third is the one to recognize early: if `finishedAt` is recent and the status is
 still `OutOfSync`, no amount of syncing will fix it and the cause is a write conflict,
-a missing `ignoreDifferences`, or a mutating webhook. `references/outofsync.md` covers
+a missing `ignoreDifferences`, or a mutating webhook. `sync-outofsync.md` covers
 it.
 
 ## Operator-managed instances change where the fix goes
@@ -203,51 +197,20 @@ Report these, in this order. A cause with no supporting output is not a diagnosi
 
 ### If the run writes a structured result
 
-When the output is an `AnalysisResult`, the four items above are its fields:
-
-| Item | Field |
-|---|---|
-| 1 and 2 | `diagnosis.summary` and `diagnosis.rootCause` |
-| 3 | `diagnosis.confidence` — the enum is exactly `Low`, `Medium`, `High` |
-| 4 | `actionRequired` |
-
-`actionRequired: "False"` ends the run as Completed with no remediation, so use it
-deliberately for the not-actionable states above rather than inventing an option to
-fill the field. A manual-sync Application is the common case.
-
-When `actionRequired` is `"True"`, each option's `remediationPlan.actions[].command`
-must be an exact executable command — so the rule is not "never produce a command", it
-is **produce the right one**. For anything in the operator-managed table above, that is
-a patch to the `ArgoCD` CR, never an edit to `argocd-cm`:
-
-```bash
-oc patch argocd <cr> -n <ns> --type merge -p '{"spec":{"resourceTrackingMethod":"annotation"}}'
-```
-
-Set `risk` and `reversible` from what the action actually does, not from how routine it
-feels. Enabling `prune` is `Critical` and `Irreversible` — it deletes every live
-resource no longer in git. A CR patch restarts Argo CD components, so it is at least
-`Medium`. Put the read-back that proves the fix worked in a `post-check` action.
-
-Declare every namespace the commands touch in the option's RBAC, with a
-`justification`. That declaration is the only source of execution permissions, and an
-Application's own namespace is usually not its destination namespace — enumerate from
-the objects you named in the diagnosis, not from where the Application object lives.
-
-Whatever the output shape, never propose a manual `kubectl` edit to a managed resource
-without first checking `spec.syncPolicy.automated.selfHeal`. With self-heal on, Argo CD
-reverts it within seconds — the action reports success, the `post-check` fails, and the
-Application is unchanged.
+When the caller supplies an output schema, load `runtime-output.md`. Map this
+workflow's findings to that schema; its fields, types and execution contract are
+authoritative. Remediation commands, when requested, are proposals for a separate
+authorized stage. Diagnosis does not execute them.
 
 ## Reference
 
 | Topic | File | When to load |
 |---|---|---|
-| Comparison failed, so there is no diff | `references/comparison-error.md` | Sync status `Unknown`, `ComparisonError`, or `InvalidSpecError` |
-| A sync operation that will not finish | `references/sync-stuck.md` | Phase `Running` or `Terminating` |
-| A sync operation that failed | `references/sync-failed.md` | Phase `Failed` or `Error` |
-| OutOfSync: drift, auto-sync declining, perpetual diff | `references/outofsync.md` | `OutOfSync` with no operation running |
-| Synced but wrong | `references/false-synced.md` | Status is `Synced` and the cluster still does not match |
-| Application **health** status triage | `skills/gitops/argo-app-health-triage` | The symptom is `Degraded`, `Progressing`, `Missing`, or health `Unknown` |
-| Operator-owned behavior — destination RBAC, apps-in-any-namespace | `skills/gitops/argo-operator` | A sync is `forbidden`, or the Application is ignored entirely with no status |
-| ApplicationSet, Rollout, and controller-level debugging | `skills/gitops/argo-cluster-debug` | The symptom is not an Application sync state |
+| Comparison failed, so there is no diff | `sync-comparison-error.md` | Sync status `Unknown`, `ComparisonError`, or `InvalidSpecError` |
+| A sync operation that will not finish | `sync-stuck.md` | Phase `Running` or `Terminating` |
+| A sync operation that failed | `sync-failed.md` | Phase `Failed` or `Error` |
+| OutOfSync: drift, auto-sync declining, perpetual diff | `sync-outofsync.md` | `OutOfSync` with no operation running |
+| Synced but wrong | `sync-false-synced.md` | Status is `Synced` and the cluster still does not match |
+| Application **health** status triage | `app-health-triage.md` | The symptom is `Degraded`, `Progressing`, `Missing`, or health `Unknown` |
+| Operator-owned behavior — destination RBAC, apps-in-any-namespace | `operator-troubleshooting.md` | A sync is `forbidden`, or the Application is ignored entirely with no status |
+| ApplicationSet, Rollout, and controller-level debugging | `../SKILL.md` | The symptom is not an Application sync state |

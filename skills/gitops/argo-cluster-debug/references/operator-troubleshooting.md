@@ -1,45 +1,31 @@
----
-name: argo-operator
-description: >
-  Diagnose behavior that the Red Hat OpenShift GitOps operator owns on a live cluster,
-  where the fix is an operator input — a label, an ArgoCD CR field, an operator
-  environment variable — rather than the reconciled object itself. Two topics.
-  Destination-namespace RBAC: the operator writes the Role and RoleBinding from the
-  argocd.argoproj.io/managed-by label or a completed NamespaceManagement handshake, so
-  use it when a sync fails forbidden or Unauthorized. Apps in any namespace: an
-  Application object outside the Argo CD namespace is ignored with no status, driven by
-  sourceNamespaces. Read-only, and written for an automated
-  run with no human available — it never writes the object the operator owns, and it
-  never asks a question. Not for sync or health status triage.
-license: MIT
-compatibility: Requires oc or kubectl
----
-
 # Argo CD operator
+
+Load through Workflow 2c in `../SKILL.md`. Reuse the installation and instance evidence
+already gathered. File paths below are relative to this reference directory.
 
 Operator-owned behavior for an Argo CD instance installed by the Red Hat OpenShift
 GitOps operator. Upstream Argo CD does not create these objects, so the fix is always
 an operator input — a label, a CR field, an operator environment variable — never the
 reconciled object itself.
 
-This skill is read-only. Show the operator input that would fix the problem, and stop
-there. Applying it belongs to `argo-operations`, and only after a dry-run and an
-explicit confirmation.
+This workflow is read-only. Show the operator input that would fix the problem, and stop
+there. Desired-state changes belong in Git: hand back the operator input or manifest
+to commit and let the responsible controller reconcile it. Do not apply it in diagnosis.
 
-## You are probably running non-interactively
+## Unattended diagnosis
 
-This skill is written to be usable by an automated diagnosis run with no human in the
-loop. If no one can answer a question, do not ask one. Gather the evidence you can
+When this workflow is used by an automated diagnosis run with no human in the
+loop, do not ask questions. Gather the evidence you can
 reach, name the most probable cause, and state your confidence and what you could not
 check. An honest `Low` confidence diagnosis is useful. A question is not.
 
-Related skills, so this one stays narrow:
+Related guidance:
 
-| Need | Skill |
+| Need | Reference or action |
 |------|-------|
-| Operator CRD field reference — RolloutManager, NotificationsConfiguration, NamespaceManagement, ImageUpdater, GitopsService | `skills/gitops/argo-knowledge/references/openshift-gitops-operator.md` |
-| Installing or changing an operator-managed instance | `skills/gitops/argo-operations` |
-| Sync, health, and controller-log debugging that is not operator-owned | `skills/gitops/argo-cluster-debug` |
+| Operator CRD field reference — RolloutManager, NotificationsConfiguration, NamespaceManagement, ImageUpdater, GitopsService | `../../argo-knowledge/references/openshift-gitops-operator.md` |
+| Installing or changing an operator-managed instance | Commit the operator configuration to Git; the OpenShift GitOps Operator reconciles it |
+| Sync, health, and controller-log debugging that is not operator-owned | `../SKILL.md` |
 
 ## Before any check
 
@@ -78,12 +64,15 @@ $KCTL get argocd -A -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metada
 
 ## Route by symptom
 
-Load exactly one topic. These look alike at a distance and have unrelated fixes.
+Start with the matching topic. These look alike at a distance and have different
+fixes. Follow any additional topic implicated by the evidence, retaining completed
+checks and outstanding sync or health findings for the final report.
 
 | Symptom | Topic | Reference |
 |---|---|---|
-| Sync fails `forbidden` or `Unauthorized`; the controller cannot write to the destination namespace | Destination-namespace RBAC | `references/destination-namespace-rbac.md` |
-| An `Application` object outside the Argo CD namespace is ignored — no status at all | Apps in any namespace | `references/apps-in-any-namespace.md` |
+| Sync fails `forbidden` or `Unauthorized`; the controller cannot write to the destination namespace | Destination-namespace RBAC | `operator-rbac.md` |
+| An `Application` object outside the Argo CD namespace is ignored — no status at all | Apps in any namespace | `operator-apps-in-any-namespace.md` |
+| `Application is not allowed in namespace`, or UI access disappeared after enabling `sourceNamespaces` | Apps in any namespace and its AppProject/UI policy layers | `operator-apps-in-any-namespace.md` |
 
 Each is a different "permission denied", and the distinguishing evidence is cheap: an
 empty `.status` means the Application is not being watched, while a `forbidden` sync
@@ -91,7 +80,7 @@ means the controller lacks Kubernetes rights. Establish which before loading a
 reference.
 
 If the symptom is not operator-owned, hand off rather than guessing. Sync state is
-`skills/gitops/argo-app-sync-triage`, health is `skills/gitops/argo-app-health-triage`.
+`app-sync-triage.md`, health is `app-health-triage.md`.
 
 ## Topic: destination-namespace RBAC
 
@@ -137,7 +126,7 @@ operator will not also create the source-namespace roles for `managed-by-cluster
 
 ### Running this topic
 
-Load `references/destination-namespace-rbac.md` and run that workflow in order. Do not
+Load `operator-rbac.md` and run that workflow in order. Do not
 stop at the first missing object. A missing label and an AppProject rejection often sit
 on the same Application.
 
@@ -201,7 +190,8 @@ rejected the sync, or the reverse.
 
 #### 4. Root cause and recommendation
 
-Name one root cause. If the grant is missing, the recommendation is the label or the
+State one causal chain per independent finding, retaining separate project-policy
+and workload faults. If the grant is missing, the recommendation is the label or the
 `NamespaceManagement` handshake. It is not a Role or RoleBinding manifest.
 
 State the impact of the recommendation:
@@ -236,67 +226,20 @@ without reading either:
 The AppProject is not operator-owned, so that half is an ordinary edit. Say which layer
 you are recommending a change to.
 
-Load `references/apps-in-any-namespace.md`.
+Load `operator-apps-in-any-namespace.md`.
 
 ## If the run writes a structured result
 
-When the output is an `AnalysisResult`, each topic's Report maps onto its fields:
-`diagnosis.summary` and `diagnosis.rootCause` for the finding, `diagnosis.confidence`
-for how far the evidence reached — the enum is exactly `Low`, `Medium`, `High` — and
-`actionRequired` for whether anything should change.
-
-Use `actionRequired: "False"` where the finding is working-as-configured: a
-cluster-scoped instance that does not need a `managed-by` label, an AppProject
-deliberately restricting a destination, a `defaultPolicy` that is empty on purpose.
-That ends the run as Completed instead of manufacturing a remediation.
-
-When `actionRequired` is `"True"`, `remediationPlan.actions[].command` must be an exact
-executable command. So the rule is not "never produce a command" — it is that the
-command must be the **operator input**, never the object the operator reconciles:
-
-| Recommend | Never |
-|---|---|
-| `oc label namespace <dest> argocd.argoproj.io/managed-by=<argocd-ns>` | A `Role` or `RoleBinding` in the destination namespace |
-| `oc patch argocd <cr> -n <ns> --type merge -p '{"spec":{"sourceNamespaces":[...]}}'` | Editing `--application-namespaces` on the Deployment or StatefulSet |
-| `oc patch argocd <cr> -n <ns> --type merge -p '{"spec":{"rbac":{"policy":"..."}}}'` | Editing `argocd-cm` or `argocd-rbac-cm` |
-
-A command in the right-hand column appears to succeed and is reverted on the next
-reconcile, which is worse than proposing nothing: it consumes an approval and an
-execution step to produce a regression.
-
-Declare RBAC to match the command you actually proposed, with a `justification`.
-**Your declaration is the only source of execution permissions.** Nothing in the run
-scopes you to a namespace and nothing widens the grant later, so a namespace you leave
-out is a namespace the execution step cannot touch — and it fails there, after an
-approval has already been spent.
-
-| Command | Needs |
-|---|---|
-| Labelling a namespace | `patch` on `namespaces`, **cluster-scoped** — a Namespace is not a namespaced resource, so a namespace-scoped rule will not grant it |
-| Patching the `ArgoCD` CR | `patch` on `argocds.argoproj.io`, namespace-scoped to the **instance** namespace |
-| Editing an AppProject | `patch` on `appprojects.argoproj.io`, namespace-scoped to the **instance** namespace |
-
-The Argo-specific trap is that an Application's own namespace and its destination
-namespace are usually different, and both may be in scope for one fix. Enumerate the
-namespaces from the objects you actually named in the diagnosis rather than defaulting
-to the Argo CD namespace.
-
-Size the `risk` and the justification to the real grant:
-
-- Patching the `ArgoCD` CR restarts Argo CD components, so `risk` is at least `Medium`.
-- Granting `managed-by` gives that instance every verb on every namespaced resource in
-  the destination, including `impersonate` on its ServiceAccounts. Scope the
-  justification to that, and do not call it admin-equivalent — that understates it.
-
-Put the read-back that proves the operator acted — the Role appearing, the label being
-present, `observedGeneration` catching up — in a `post-check` action. The operator is
-eventually consistent, so a `mutation` with no `post-check` cannot be verified.
+When the caller supplies an output schema, load `runtime-output.md`. Map this
+workflow's findings to that schema; its fields, types and execution contract are
+authoritative. Remediation commands, when requested, are proposals for a separate
+authorized stage. Diagnosis does not execute them.
 
 ## Reference
 
 | Topic | File | When to load |
 |-------|------|----------------|
-| Destination-namespace RBAC — decision order, commands, and the two grant paths | `references/destination-namespace-rbac.md` | The symptom is a `forbidden` or `Unauthorized` sync, or a question about `managed-by` or `NamespaceManagement` |
-| Apps in any namespace — `sourceNamespaces`, the two layers, and addressing Applications afterwards | `references/apps-in-any-namespace.md` | An Application outside the instance namespace has no status, or `Application is not allowed in namespace` |
-| Application **sync** state triage | `skills/gitops/argo-app-sync-triage` | The symptom is `OutOfSync`, a failed or stuck sync, or `Synced` while the cluster is wrong |
-| Application **health** status triage | `skills/gitops/argo-app-health-triage` | The symptom is `Degraded`, `Progressing`, `Missing`, or health `Unknown` |
+| Destination-namespace RBAC — decision order, commands, and the two grant paths | `operator-rbac.md` | The symptom is a `forbidden` or `Unauthorized` sync, or a question about `managed-by` or `NamespaceManagement` |
+| Apps in any namespace — `sourceNamespaces`, the two layers, and addressing Applications afterwards | `operator-apps-in-any-namespace.md` | An Application outside the instance namespace has no status, or `Application is not allowed in namespace` |
+| Application **sync** state triage | `app-sync-triage.md` | The symptom is `OutOfSync`, a failed or stuck sync, or `Synced` while the cluster is wrong |
+| Application **health** status triage | `app-health-triage.md` | The symptom is `Degraded`, `Progressing`, `Missing`, or health `Unknown` |

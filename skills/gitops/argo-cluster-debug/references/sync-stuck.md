@@ -1,4 +1,4 @@
-<!-- Loaded on demand by skills/gitops/argo-app-sync-triage/SKILL.md when
+<!-- Loaded on demand by app-sync-triage.md when
      operationState.phase is Running or Terminating. Read-only. -->
 
 # A sync that will not finish
@@ -45,7 +45,7 @@ This is the critical point: **the wave gate is health, not existence.** A Deploy
 that is applied successfully but whose pods never become ready blocks the wave
 indefinitely, and the sync looks stuck while the apply itself worked perfectly. When
 the blocker is a workload, the real question is why it is unhealthy —
-`skills/gitops/argo-app-health-triage` owns that, and it is usually the faster path.
+`app-health-triage.md` owns that, and it is usually the faster path.
 
 ## 2. Hooks
 
@@ -138,4 +138,4 @@ waiting on Job `db-migrate`, whose pod has been `Pending` for 40 minutes with
 
 State whether the blocker is the sync machinery or an unhealthy workload. If it is a
 workload, say that the sync is behaving correctly and hand off to
-`skills/gitops/argo-app-health-triage`.
+`app-health-triage.md`.

@@ -1,4 +1,4 @@
-<!-- Loaded on demand by skills/gitops/argo-app-health-triage/SKILL.md when the
+<!-- Loaded on demand by app-health-triage.md when the
      Application health status is Unknown. Read-only. -->
 
 # Unknown

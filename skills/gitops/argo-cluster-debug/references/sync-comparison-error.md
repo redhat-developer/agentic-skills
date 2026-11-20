@@ -1,4 +1,4 @@
-<!-- Loaded on demand by skills/gitops/argo-app-sync-triage/SKILL.md when the sync
+<!-- Loaded on demand by app-sync-triage.md when the sync
      status is Unknown or there is a ComparisonError or InvalidSpecError condition.
      Read-only. -->
 
@@ -65,8 +65,8 @@ only unable to read it.
 
 Never print the decoded contents of these secrets beyond the `url` key. The diagnosis
 needs the URL to compare against `spec.source.repoURL`; the token, SSH key, and
-password are not evidence for anything, and an `AnalysisResult` is a cluster object
-that others can read.
+password are not evidence for anything. Diagnostic reports may be stored or shared
+with readers who do not have access to the original Secret.
 
 Matching is by URL prefix, and it is literal. `https://github.com/org/repo` and
 `https://github.com/org/repo.git` are different strings, and an SSH URL never matches
@@ -134,7 +134,7 @@ $KCTL logs -n "$NS" sts/"$CR"-application-controller --tail=200 | grep -i -E "cl
 
 For the in-cluster destination on an operator-managed namespace-scoped instance, a
 comparison that fails with `forbidden` is a missing destination-namespace grant, not a
-credential. That is `skills/gitops/argo-operator`.
+credential. That is `operator-troubleshooting.md`.
 
 ## 5. InvalidSpecError
 
@@ -153,7 +153,7 @@ $KCTL get appproject "$PROJ" -n "$NS" -o jsonpath=''\
 | `Application referencing project <p> which does not exist` | The AppProject is absent, or lives in a different namespace from the instance. |
 | `application destination ... is not permitted in project` | The destination server or namespace is not in `spec.destinations`. Both fields are matched, and `*` in one does not cover the other. |
 | `application repo ... is not permitted in project` | `sourceRepos` does not list the repo. Matching is glob, and is literal about the `.git` suffix. |
-| `Application is not allowed in namespace` | The Application object lives in a namespace the instance does not watch. This is apps-in-any-namespace, and on an operator-managed instance the fix is a CR field — see `skills/gitops/argo-operator`. |
+| `Application is not allowed in namespace` | The Application object lives in a namespace the instance does not watch. This is apps-in-any-namespace, and on an operator-managed instance the fix is a CR field — see `operator-troubleshooting.md`. |
 
 An AppProject rejection and a missing Kubernetes RoleBinding are independent, and both
 can be true. Fixing one leaves the other. Say which you checked.

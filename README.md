@@ -7,8 +7,8 @@
   <a href="CONTRIBUTING.md"><img src="https://img.shields.io/badge/PRs-welcome-brightgreen.svg" alt="PRs Welcome"></a>
   <img src="https://img.shields.io/badge/OpenShift-layered%20products-EE0000.svg" alt="OpenShift">
   <img src="https://img.shields.io/badge/products-1%20shipping%20%7C%203%20open-8A63D2.svg" alt="1 product shipping, 3 open">
-  <img src="https://img.shields.io/badge/skills-7-8A63D2.svg" alt="7 skills">
-  <img src="https://img.shields.io/badge/evals-92-3FB950.svg" alt="92 evals">
+  <img src="https://img.shields.io/badge/skills-4-8A63D2.svg" alt="4 skills">
+  <img src="https://img.shields.io/badge/evals-96-3FB950.svg" alt="96 evals">
 </p>
 
 <p align="center">
@@ -101,8 +101,53 @@ cp agents/github-copilot/argocd.agent.md .github/copilot/
 <details>
 <summary><b>Claude Code notes</b></summary>
 
-After install the `argocd` agent appears in `/agents` and the 6 GitOps skills activate on
+After install the `argocd` agent appears in `/agents` and the 4 GitOps skills activate on
 context. Run `/reload-plugins` if they do not appear immediately.
+
+</details>
+
+<details>
+<summary><b>Agentic OpenShift Lightspeed</b> — packaging and migration</summary>
+
+Package the complete `skills/gitops/` tree and configure its mounted location as the
+sandbox's skills root (`cwd`). Skill discovery expects immediate children such as
+`<cwd>/argo-cluster-debug/SKILL.md`; pointing it at the repository root or `skills/`
+adds an extra directory level. Preserve each skill's `references/`, `scripts/` and
+`assets/` where present, the sibling skills, and `write-safety.md` at the product root.
+Updating the Claude marketplace manifest alone does not update a Lightspeed image.
+See the upstream [skills contract](https://github.com/openshift/lightspeed-agentic-sandbox/blob/main/.ai/spec/what/provider-contract.md)
+and [filesystem routing design](https://github.com/openshift/lightspeed-agentic-sandbox/blob/main/.ai/spec/decisions/0002-sdk-native-skills-route.md).
+
+Health, sync and operator triage now enter through `argo-cluster-debug`. If an external
+Agent configuration, trigger or prompt names an old skill, migrate it before deploying
+the new bundle:
+
+| Previous skill name | New entrypoint | Reference within cluster-debug |
+|---|---|---|
+| `argo-app-health-triage` | `argo-cluster-debug` | `references/app-health-triage.md` |
+| `argo-app-sync-triage` | `argo-cluster-debug` | `references/app-sync-triage.md` |
+| `argo-operator` | `argo-cluster-debug` | `references/operator-troubleshooting.md` |
+
+A caller can name a reference in its prompt, but must load the parent skill first.
+References are readable resources, not independently discoverable skills. Include the
+Application name, object namespace, instance if known, and the observed symptom in an
+unattended request. Diagnosis does not execute remediation commands.
+
+Before rolling out the bundle, run these checks on the deployed Lightspeed version
+and model with readable test resources, and inspect which files the agent loads:
+
+| Prompt | Expected reference |
+|---|---|
+| Why is Application payments Degraded? | `app-health-triage.md`, then `health-degraded.md` |
+| App has been OutOfSync for three hours | `app-sync-triage.md`, then the leaf selected from conditions and operation phase |
+| Sync says deployments.apps is forbidden | `operator-troubleshooting.md`, then `operator-rbac.md` on an operator-managed instance |
+| Application in team-frontend is ignored, no status | `operator-troubleshooting.md`, then `operator-apps-in-any-namespace.md` |
+
+Also repeat a diagnosis with no human available and restricted reads. It must finish
+with evidence, confidence and unavailable checks, without asking questions, making
+cluster changes, or inventing observations. If the runtime supplies a result schema,
+check that the result follows it. These runtime checks and the expanded live benchmark
+are pending; local registration and file checks do not establish model routing quality.
 
 </details>
 
@@ -113,7 +158,7 @@ you run.
 
 | Product | Covers | Skills | Status |
 |---------|--------|-------:|--------|
-| [**gitops**](skills/gitops) | Argo CD, Argo Rollouts | **7** | shipping, benchmarked |
+| [**gitops**](skills/gitops) | Argo CD, Argo Rollouts | **4** | shipping, benchmarked |
 | [**servicemesh**](skills/servicemesh) | Istio | — | [open for contributions](docs/adding-a-skill.md) |
 | [**serverless**](skills/serverless) | Knative | — | [open for contributions](docs/adding-a-skill.md) |
 | [**pipelines**](skills/pipelines) | Tekton | — | [open for contributions](docs/adding-a-skill.md) |
@@ -128,7 +173,7 @@ Evals are required — the guide explains the bar and why it is set where it is.
 Skills are grouped by product. Expand the one you use.
 
 <details open>
-<summary><b>🔵 GitOps</b> — Argo CD, Argo Rollouts · <b>7 skills</b>, 4 benchmarked</summary>
+<summary><b>🔵 GitOps</b> — Argo CD, Argo Rollouts · <b>4 skills</b>, 4 benchmarked</summary>
 
 > **Scope — Red Hat OpenShift GitOps.** These skills cover Argo CD and Argo Rollouts as
 > shipped and supported by the OpenShift GitOps operator, including the operator-managed
@@ -157,9 +202,9 @@ The agent automatically selects the right skill based on what you ask:
  Ask a question ────► argo-knowledge           "How do I...?"
  Audit a repo ──────► argo-repo-audit          "Audit this repo"
  Debug a cluster ───► argo-cluster-debug       "Why is X failing?"
- Health is bad ─────► argo-app-health-triage   "Why is this app Degraded?"
- Sync is bad ───────► argo-app-sync-triage     "Why is this app OutOfSync?"
- Operator owns it ──► argo-operator            "Sync says forbidden / app is ignored"
+ Health is bad ─────► argo-cluster-debug       "Why is this app Degraded?"
+ Sync is bad ───────► argo-cluster-debug       "Why is this app OutOfSync?"
+ Operator owns it ──► argo-cluster-debug       "Sync says forbidden / app is ignored"
  Promote a rollout ─► argo-cluster-debug       "Promote / abort / retry the canary"
  Tune performance ──► argo-performance-tuning  "Why is this slow at scale?"
 ```
@@ -245,6 +290,9 @@ Just validate YAML syntax and schemas, don't do a full audit.
 
 Use when something is broken or you want a health check.
 
+Application health, sync and operator-owned permission/watch failures share this skill.
+It loads the matching router and only the detailed references the diagnosis needs.
+
 ```text
 # Health check
 Check if Argo CD is properly installed on my cluster.
@@ -252,6 +300,8 @@ Check if Argo CD is properly installed on my cluster.
 # Application issues
 Why is my Application podinfo stuck in OutOfSync?
 Debug the degraded Application in the production namespace.
+Why does my sync say deployments.apps is forbidden?
+Application checkout in team-frontend is ignored and has no status. Diagnose it.
 
 # Rollout issues
 The canary rollout for frontend is stuck at step 2. Why?
@@ -342,7 +392,7 @@ no measured baseline is a guess, and this repo does not publish guesses — incl
 the answer is unflattering.
 
 <details open>
-<summary><b>🔵 GitOps</b> — 7 skills, 4 measured, re-measurement in progress</summary>
+<summary><b>🔵 GitOps</b> — 4 skills, 4 measured, re-measurement in progress</summary>
 
 > **Run 9 (2026-11-10) — measured with new tooling, and not comparable to runs 1–8.**
 > The process that produced the earlier runs was undocumented and could not be
@@ -359,6 +409,12 @@ the answer is unflattering.
 | [`argo-cluster-debug`](benchmarks/argo-cluster-debug.md) | **95.0%** | 78.8% | **+16.2** | |
 | [`argo-knowledge`](benchmarks/argo-knowledge.md) | **95.4%** | 86.9% | **+8.5** | |
 | **Weighted overall** | **95.4%** | **74.5%** | **+20.9** | n=425 |
+
+**Coverage note — 2026-11-20:** cluster-debug now has 44 evals: the merged health,
+sync and operator triage suite plus four offline autonomy scenarios. Its Run 9 score
+above covers the pre-merge skill on evals 1–12 only. Evals 13–44 and routing through
+the merged skill are not covered by Run 9; the weighted overall also excludes those
+new scenarios.
 
 **The delta tracks how product-specific a skill is.** Performance tuning — exact setting
 names, defaults the operator silently overrides, which CR field actually wins — gains

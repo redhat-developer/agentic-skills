@@ -1,4 +1,4 @@
-<!-- Loaded on demand by skills/gitops/argo-app-sync-triage/SKILL.md when
+<!-- Loaded on demand by app-sync-triage.md when
      operationState.phase is Failed or Error. Read-only. -->
 
 # A sync that failed
@@ -58,7 +58,7 @@ $KCTL auth can-i <verb> <resource> \
 On an operator-managed instance this is almost never fixed by writing a Role. The
 operator creates the destination-namespace Role and RoleBinding from the
 `argocd.argoproj.io/managed-by` label or a `NamespaceManagement` handshake, and a
-hand-written binding will not be adopted. Load `skills/gitops/argo-operator` before
+hand-written binding will not be adopted. Load `operator-troubleshooting.md` before
 recommending any RBAC manifest.
 
 A `forbidden` on a **cluster-scoped** kind from a namespace-scoped instance is a
@@ -180,4 +180,4 @@ and the Application will stay broken until someone syncs it" is usually the most
 actionable sentence available.
 
 If the cause is RBAC on an operator-managed instance, do not produce a Role or
-RoleBinding manifest. Hand off to `skills/gitops/argo-operator`.
+RoleBinding manifest. Hand off to `operator-troubleshooting.md`.

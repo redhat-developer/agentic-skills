@@ -1,4 +1,4 @@
-<!-- Loaded on demand by skills/gitops/argo-app-health-triage/SKILL.md when the
+<!-- Loaded on demand by app-health-triage.md when the
      Application health status is Missing. Read-only. -->
 
 # Missing
@@ -68,7 +68,7 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
 | What you see | Cause |
 |---|---|
 | No `operationState` at all | The Application has never synced. Check `syncPolicy` — a manual-sync app that nobody synced is `Missing` by design, not by fault |
-| `phase: Failed` with `forbidden` or `Unauthorized` in a resource message | RBAC. The Argo CD instance may not be permitted in the destination namespace. Load `skills/gitops/argo-operator` — the operator owns that grant and it must not be hand-written |
+| `phase: Failed` with `forbidden` or `Unauthorized` in a resource message | RBAC. The Argo CD instance may not be permitted in the destination namespace. Load `operator-troubleshooting.md` — the operator owns that grant and it must not be hand-written |
 | `phase: Failed`, message naming a kind | Often a CRD that is not installed. Section 3 |
 | `phase: Error` on a hook | A `PreSync` hook failed and the sync never reached the resources. The hook itself is excluded from health, so it will not show as unhealthy anywhere |
 | `phase: Succeeded`, resource still absent | The object was created and then removed. Section 4 |

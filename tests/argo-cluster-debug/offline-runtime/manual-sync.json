@@ -1,0 +1,90 @@
+{
+  "context": "offline-fixture",
+  "collectedAt": "2026-11-20T10:00:00Z",
+  "installation": {
+    "instance": {
+      "namespace": "team-frontend",
+      "name": "team-argocd"
+    },
+    "operatorVersion": "1.21.3",
+    "argoCDVersion": "3.4.5",
+    "checkedInCurrentRun": true,
+    "components": [
+      {
+        "name": "team-argocd-server",
+        "ready": true,
+        "restarts": 0
+      },
+      {
+        "name": "team-argocd-repo-server",
+        "ready": true,
+        "restarts": 0
+      },
+      {
+        "name": "team-argocd-application-controller",
+        "ready": true,
+        "restarts": 0
+      }
+    ],
+    "csvPhase": "Succeeded"
+  },
+  "observations": [
+    {
+      "command": "oc get applications.argoproj.io legacy-erp -n team-frontend -o json",
+      "exit_code": 0,
+      "stdout": {
+        "apiVersion": "argoproj.io/v1alpha1",
+        "kind": "Application",
+        "metadata": {
+          "name": "legacy-erp",
+          "namespace": "team-frontend"
+        },
+        "spec": {
+          "project": "team",
+          "source": {
+            "repoURL": "https://git.example.test/team/apps.git",
+            "path": "legacy-erp",
+            "targetRevision": "main"
+          },
+          "destination": {
+            "server": "https://kubernetes.default.svc",
+            "namespace": "erp-prod"
+          }
+        },
+        "status": {
+          "health": {
+            "status": "Healthy"
+          },
+          "sync": {
+            "status": "OutOfSync",
+            "revision": "abc123"
+          },
+          "operationState": {
+            "phase": "Succeeded",
+            "finishedAt": "2026-11-14T08:00:00Z"
+          },
+          "conditions": [],
+          "resources": [
+            {
+              "group": "apps",
+              "kind": "Deployment",
+              "namespace": "erp-prod",
+              "name": "legacy-erp",
+              "status": "OutOfSync",
+              "health": {
+                "status": "Healthy"
+              }
+            }
+          ]
+        }
+      },
+      "stderr": null
+    },
+    {
+      "command": "oc logs -n team-frontend statefulset/team-argocd-application-controller --tail=50",
+      "exit_code": 0,
+      "stdout": "time=\"2026-11-20T09:59:00Z\" level=info msg=\"Skipping auto-sync: automated sync is not configured\" application=team-frontend/legacy-erp",
+      "stderr": null
+    }
+  ]
+}

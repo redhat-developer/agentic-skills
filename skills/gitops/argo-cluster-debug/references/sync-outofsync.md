@@ -1,4 +1,4 @@
-<!-- Loaded on demand by skills/gitops/argo-app-sync-triage/SKILL.md when the sync
+<!-- Loaded on demand by app-sync-triage.md when the sync
      status is OutOfSync and no operation is running. Read-only. -->
 
 # OutOfSync
@@ -24,7 +24,8 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
 ```
 
 If `automated` is empty, the Application is manual-sync and sitting `OutOfSync` is its
-normal resting state. Report that and stop. Do not diagnose a fault, and do not
+normal resting state. Close this sync branch and continue any outstanding health or
+operator checks. Do not diagnose the manual-sync policy as a fault, and do not
 recommend enabling auto-sync — that is a policy decision, frequently deliberate for
 production.
 
@@ -99,7 +100,7 @@ not a fault — report it as "working as configured" and name the window.
 If the controller logs nothing about the Application at all, confirm it is being
 watched. On an operator-managed instance an Application in a tenant namespace is
 ignored entirely unless the namespace is in `sourceNamespaces` — see
-`skills/gitops/argo-operator`.
+`operator-troubleshooting.md`.
 
 ## 4. The revision is not what you think
 
