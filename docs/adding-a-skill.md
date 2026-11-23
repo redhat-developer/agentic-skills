@@ -76,6 +76,16 @@ description: >
 Keep `SKILL.md` lean and push detail into `references/`. It is loaded every time the
 skill activates; reference files are not.
 
+### Compass manifest
+
+Each skill needs a `catalog-info.yaml` in its directory for catalog registration:
+
+1. Create `skills/<product>/<skill>/catalog-info.yaml` — use an existing skill as template
+2. Set the `metadata.description` to match your `SKILL.md` frontmatter `description`
+   exactly (normalized whitespace). `make test-registration` enforces this using
+   [yq](https://github.com/mikefarah/yq) (installed by CI; `brew install yq` locally).
+3. Add the manifest as a `spec.targets` entry in the root `catalog-info.yaml`
+
 ---
 
 ## 3. Writing evals that measure something
@@ -271,7 +281,10 @@ make hooks                # install the local secret-scan pre-commit hook (once)
 
 Registration is strict on purpose: a new skill must appear in `marketplace.json`, the
 agent's skills list, a Makefile eval target *and* the `eval` aggregate, the banner, the
-README, and both `evals.yml` entries. The guard lists anything missing.
+README, and both `evals.yml` entries. It also verifies that each skill has a
+`catalog-info.yaml` Compass manifest, that the root `catalog-info.yaml` Location lists it
+as a target, and that the manifest description has not drifted from the SKILL.md
+frontmatter. The guard lists anything missing.
 
 **On secrets:** this repo deliberately contains insecure-looking manifests as audit
 fixtures, so scanners trip easily. Prefix synthetic credentials with `EXAMPLE-`, keep them
