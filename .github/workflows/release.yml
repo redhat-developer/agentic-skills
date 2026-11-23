@@ -23,9 +23,13 @@ jobs:
         run: |
           mkdir -p dist
           for skill in skills/*/*/; do
-            name=$(basename "$skill")
-            tar -czf "dist/${name}-${TAG}.tar.gz" -C skills "$name"
-            (cd skills && zip -qr "../dist/${name}-${TAG}.zip" "$name")
+            rel="${skill#skills/}"   # e.g. gitops/argo-knowledge/
+            rel="${rel%/}"           # e.g. gitops/argo-knowledge
+            product="${rel%%/*}"
+            [ -L "skills/$product" ] && continue   # skip symlink aliases
+            name="${rel##*/}"        # e.g. argo-knowledge
+            tar -czhf "dist/${name}-${TAG}.tar.gz" -C skills "$rel"
+            (cd skills && zip -qr "../dist/${name}-${TAG}.zip" "$rel")
           done
           (cd dist && sha256sum * > checksums.txt)
           ls -la dist
