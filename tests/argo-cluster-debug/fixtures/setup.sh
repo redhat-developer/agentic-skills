@@ -24,6 +24,10 @@
 #   eval 17 pending-api      Synced AND Progressing   (Pending / unschedulable)
 #   eval 18 project-denied   SyncError                (AppProject denies Service)
 #   eval 19 payments-api     Synced AND Healthy       (positive control)
+#   eval 20 configerror-api  Synced AND Degraded      (CreateContainerConfigError)
+#   eval 21 orphaned-app     never reconciled         (CR in argocd ns)
+#   eval 22 window-blocked   OutOfSync, auto blocked  (deny syncWindow)
+#   eval 23 unready-api      Synced AND Progressing   (readiness probe fail)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -41,6 +45,7 @@ NS_ARGOCD="${NS_ARGOCD:-openshift-gitops}"
 echo "==> checking namespace ownership"
 conflict=0
 for ns in apps finance eval-catalog eval-crashloop eval-pending eval-project-deny eval-healthy \
+          eval-configerror argocd eval-window eval-unready \
           eval-staging eval-production production prod; do
   if $KCTL get ns "$ns" >/dev/null 2>&1; then
     if [ "$($KCTL get ns "$ns" -o jsonpath='{.metadata.labels.argo-skills-eval-fixture}' 2>/dev/null)" = "true" ]; then
@@ -69,6 +74,7 @@ echo "==> creating namespaces first"
 awk 'BEGIN{RS="---\n"} /\nkind: Namespace\n/ {print "---"; print}' \
   "$HERE/manifests.yaml" | $KCTL apply -f -
 for ns in apps finance eval-catalog eval-crashloop eval-pending eval-project-deny eval-healthy \
+          eval-configerror argocd eval-window eval-unready \
           eval-staging eval-production production prod; do
   for _ in $(seq 1 12); do
     [ "$($KCTL get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null)" = "Active" ] && break
@@ -133,11 +139,14 @@ sleep 5
 $KCTL annotate applications.argoproj.io project-denied -n "$NS_ARGOCD" \
   argocd.argoproj.io/refresh=hard --overwrite >/dev/null
 
-# Evals 15/16/17/19 arm from desired source alone (no live-only patches):
-#   catalog       Synced+Degraded (ImagePull)
-#   crashloop-api Synced+Degraded (CrashLoop)
-#   pending-api   Synced+Progressing (Pending)
-#   payments-api  Synced+Healthy
+echo "==> arming eval 22: refresh window-blocked so compare marks OutOfSync under deny window"
+$KCTL annotate applications.argoproj.io window-blocked -n "$NS_ARGOCD" \
+  argocd.argoproj.io/refresh=hard --overwrite >/dev/null
+
+# Evals 15/16/17/19/20/23 arm from desired source alone (no live-only patches).
+# Eval 21 (orphaned-app) lives in namespace argocd and must NOT be reconciled.
+# Eval 22 (window-blocked): deny syncWindow is on the AppProject from create time —
+# comparison still runs (OutOfSync), automated sync never applies.
 
 # ---------------------------------------------------------------------------
 # Evals 2 and 6 need a SECOND revision.
@@ -187,9 +196,8 @@ sleep 120
 
 echo
 echo "==> state"
-echo "--- Applications (expect: podinfo OutOfSync/Degraded; catalog+crashloop Synced/Degraded;"
-echo "                 pending Progressing; payments Healthy; billing Suspended;"
-echo "                 platform-ui/bad-repo/bad-path Unknown; project-denied SyncError) ---"
+echo "--- Applications (expect prior fixtures plus: configerror Degraded; unready Progressing;"
+echo "                 window-blocked OutOfSync; orphaned-app in argocd with empty status) ---"
 $KCTL get applications.argoproj.io -A \
   -o custom-columns='NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status' --no-headers
 
@@ -254,6 +262,11 @@ check "eval 17 pending-api sync"        "$(app_sync pending-api)"      "Synced"
 check "eval 17 pending-api health"      "$(app_health pending-api)"    "Progressing"
 check "eval 19 payments-api sync"       "$(app_sync payments-api)"     "Synced"
 check "eval 19 payments-api health"     "$(app_health payments-api)"   "Healthy"
+check "eval 20 configerror-api sync"    "$(app_sync configerror-api)"  "Synced"
+check "eval 20 configerror-api health"  "$(app_health configerror-api)" "Degraded"
+check "eval 22 window-blocked sync"     "$(app_sync window-blocked)"   "OutOfSync"
+check "eval 23 unready-api sync"        "$(app_sync unready-api)"      "Synced"
+check "eval 23 unready-api health"      "$(app_health unready-api)"    "Progressing"
 
 # Eval 18: SyncError condition (sync status varies; condition is the signal)
 syncerr=$($KCTL get applications.argoproj.io project-denied -n "$NS_ARGOCD" \
@@ -264,6 +277,30 @@ if [ "$syncerr" = "SyncError" ] || [ "$opphase" = "Failed" ] || [ "$opphase" = "
   echo "    [OK]   eval 18 project-denied SyncError/Failed (condition='$syncerr' op='$opphase')"
 else
   echo "    [FAIL] eval 18 project-denied expected SyncError or Failed op, got condition='$syncerr' op='$opphase'"
+  fail=1
+fi
+
+# Eval 21: Application exists in argocd ns and was never reconciled (empty sync)
+orph_ns=$($KCTL get applications.argoproj.io orphaned-app -n argocd \
+            -o jsonpath='{.metadata.namespace}' 2>/dev/null || true)
+orph_sync=$($KCTL get applications.argoproj.io orphaned-app -n argocd \
+              -o jsonpath='{.status.sync.status}' 2>/dev/null || true)
+if [ "$orph_ns" = "argocd" ] && [ -z "$orph_sync" ]; then
+  echo "    [OK]   eval 21 orphaned-app in argocd with empty sync status"
+elif [ "$orph_ns" = "argocd" ] && [ "$orph_sync" != "Synced" ]; then
+  echo "    [OK]   eval 21 orphaned-app in argocd sync='${orph_sync}' (not reconciled by openshift-gitops)"
+else
+  echo "    [FAIL] eval 21 orphaned-app expected in argocd with no Synced status, got ns='$orph_ns' sync='$orph_sync'"
+  fail=1
+fi
+
+# Eval 22: deny syncWindow must be present on the project
+win=$($KCTL get appprojects.argoproj.io eval-windowed -n "$NS_ARGOCD" \
+        -o jsonpath='{.spec.syncWindows[0].kind}' 2>/dev/null || true)
+if [ "$win" = "deny" ]; then
+  echo "    [OK]   eval 22 eval-windowed syncWindows kind=deny"
+else
+  echo "    [FAIL] eval 22 eval-windowed expected syncWindows kind=deny, got '$win'"
   fail=1
 fi
 

@@ -1,7 +1,7 @@
 # argo-cluster-debug eval fixtures — TEMPORARY, torn down after the run.
 # Every object carries argo-skills-eval-fixture=true so teardown is unambiguous.
 #
-# Covers evals 1, 2, 4, 5, 6, 8, 9, 13–19 — every scenario whose named resources
+# Covers evals 1, 2, 4, 5, 6, 8, 9, 13–23 — every scenario whose named resources
 # did not otherwise exist, which previously capped both arms at `partial`.
 #
 # Namespaces `production` and `prod` are created here because that is what the eval
@@ -61,6 +61,38 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: eval-healthy
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-configerror
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-window
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-unready
   labels:
     argo-skills-eval-fixture: "true"
     pod-security.kubernetes.io/enforce: baseline
@@ -689,6 +721,165 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: eval-healthy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# EVAL 20 — Synced + Degraded: CreateContainerConfigError (missing Secret)
+# envFrom secretRef to a Secret that does not exist. Distinct from ImagePull (15),
+# CrashLoop (16), and Pending/unschedulable (17).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: configerror-api
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+      patches:
+        - target:
+            kind: Deployment
+          patch: |-
+            - op: add
+              path: /spec/progressDeadlineSeconds
+              value: 60
+            - op: add
+              path: /spec/template/spec/containers/0/envFrom
+              value:
+                - secretRef:
+                    name: eval-missing-secret
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-configerror
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# EVAL 21 — Application CR in namespace "argocd" while OpenShift GitOps watches
+# openshift-gitops. Never reconciled; distinct from knowledge eval 11
+# (NamespaceManagement tenant handshake).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: orphaned-app
+  namespace: argocd
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apps
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# EVAL 22 — automated sync present but always-deny syncWindow blocks it.
+# Distinct from knowledge eval 17 (generate syncWindows) and from missing syncPolicy.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: eval-windowed
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  description: Fixture project with a permanent deny sync window
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: eval-window
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  syncWindows:
+    - kind: deny
+      schedule: '* * * * *'
+      duration: 24h
+      applications:
+        - window-blocked
+      manualSync: false
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: window-blocked
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: eval-windowed
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-window
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# EVAL 23 — Synced + Progressing: pods Running but readiness probe always fails.
+# Distinct from Pending/unschedulable (17) and CrashLoop (16).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: unready-api
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+      patches:
+        - target:
+            kind: Deployment
+          patch: |-
+            - op: add
+              path: /spec/template/spec/containers/0/readinessProbe
+              value:
+                httpGet:
+                  path: /this-readiness-path-does-not-exist
+                  port: 8080
+                initialDelaySeconds: 1
+                periodSeconds: 3
+                failureThreshold: 1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-unready
   syncPolicy:
     automated:
       prune: true

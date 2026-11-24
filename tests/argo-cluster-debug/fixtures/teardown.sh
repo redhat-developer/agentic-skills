@@ -13,6 +13,7 @@ LABEL="argo-skills-eval-fixture=true"
 # carries our fixture label. setup.sh refuses to adopt a pre-existing namespace
 # for the same reason, so the label is only ever on namespaces we made.
 NAMESPACES=(apps finance eval-catalog eval-crashloop eval-pending eval-project-deny eval-healthy \
+            eval-configerror argocd eval-window eval-unready \
             eval-staging eval-production production prod)
 
 owned() {  # owned <ns> -> true if the namespace exists AND is ours
@@ -24,8 +25,9 @@ echo "==> deleting fixture Applications, ApplicationSets, AppProjects and Rollou
 # Delete the Argo CD objects first: removing the namespaces while an Application
 # still manages them leaves the Application reconciling against a terminating
 # namespace, which can hang the delete.
-$KCTL delete applicationset,applications.argoproj.io -n "$NS_ARGOCD" -l "$LABEL" --ignore-not-found
-# AppProjects after Applications so nothing still references eval-locked mid-delete.
+# -A: eval 21 places an Application in namespace argocd, not only $NS_ARGOCD.
+$KCTL delete applicationset.argoproj.io,applications.argoproj.io -A -l "$LABEL" --ignore-not-found
+# AppProjects after Applications so nothing still references eval-locked / eval-windowed.
 $KCTL delete appprojects.argoproj.io -n "$NS_ARGOCD" -l "$LABEL" --ignore-not-found
 for ns in "${NAMESPACES[@]}"; do
   owned "$ns" || continue

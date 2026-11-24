@@ -259,6 +259,58 @@
         "Still performs basic checks (Application status, managed resources or pods) so the healthy verdict is evidenced, not assumed from the name alone",
         "Produces a report whose conclusion matches the observed healthy state. A report that asserts a failure contradicted by the output shown in the same answer fails this expectation."
       ]
+    },
+    {
+      "id": 20,
+      "name": "Application Synced but Degraded — CreateContainerConfigError",
+      "prompt": "My Application configerror-api in the eval-configerror namespace is Synced but Degraded and the pods never become Ready. Debug it.",
+      "expectations": [
+        "Retrieves the Application and reports sync.status as Synced from live output",
+        "Inspects Pods and names CreateContainerConfigError (or equivalent create-container config failure) from container waiting reason or events — diagnosing ImagePullBackOff, CrashLoopBackOff, or unschedulable Pending when evidence shows a missing Secret/ConfigMap reference fails this expectation",
+        "Identifies the missing configuration object (for example a Secret or ConfigMap name referenced by envFrom, env.valueFrom, or volume mount) from the pod spec or event message",
+        "Does not treat this as a Git ComparisonError, AppProject sync-window block, or Rollout pause",
+        "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a field value, waiting reason, event, or log line actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written.",
+        "Every recommended action states its IMPACT — what else is affected if someone acts on it (components that restart, other Applications or tenants affected, whether anything is deleted, and any ordering dependency on another recommendation) — not only its priority. 'Impact: nothing else is affected' counts; omitting the impact entirely does not. An impact reasoned from manifests rather than verified against a cluster must say so."
+      ]
+    },
+    {
+      "id": 21,
+      "name": "Application never reconciled — CR in wrong Argo CD namespace",
+      "prompt": "I created Application orphaned-app but it never appears in the OpenShift GitOps UI and never syncs. Debug why Argo CD is ignoring it.",
+      "expectations": [
+        "Finds the Application resource in the argocd namespace (not openshift-gitops) from live cluster output",
+        "Identifies that the live Argo CD instance being used is in openshift-gitops (or another non-argocd namespace) and that Applications must live in a namespace that instance watches",
+        "Reports that the Application has no meaningful reconciled status (empty/missing sync or health) consistent with never being picked up — inventing ComparisonError, ImagePullBackOff, or SyncError without evidence fails",
+        "Does NOT diagnose this as a NamespaceManagement / sourceNamespaces tenant-namespace handshake failure unless live output shows a NamespaceManagement or tenant-namespace setup; the fault here is the Application CR sitting in the wrong instance namespace",
+        "Recommends moving or recreating the Application into the instance's namespace (openshift-gitops) or configuring the instance to watch the namespace where it lives",
+        "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a namespace name, ArgoCD CR location, or empty status field actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written."
+      ]
+    },
+    {
+      "id": 22,
+      "name": "OutOfSync with automated sync blocked by sync window",
+      "prompt": "My Application window-blocked has automated sync enabled but it stays OutOfSync and never auto-syncs. Debug it.",
+      "expectations": [
+        "Retrieves the Application and reports sync.status as OutOfSync (or never successfully synced) and shows that syncPolicy.automated is configured",
+        "Inspects the Application's AppProject and finds an active deny syncWindow (or allow window that does not currently match) that blocks automated sync",
+        "Attributes the lack of auto-sync to the sync window, not to a missing syncPolicy.automated field, ComparisonError, or ImagePullBackOff",
+        "Does not claim the Git repo is unreachable when no ComparisonError is present",
+        "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a syncWindows field, schedule/duration, or condition actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written.",
+        "Every recommended action states its IMPACT — what else is affected if someone acts on it (components that restart, other Applications or tenants affected, whether anything is deleted, and any ordering dependency on another recommendation) — not only its priority. 'Impact: nothing else is affected' counts; omitting the impact entirely does not. An impact reasoned from manifests rather than verified against a cluster must say so."
+      ]
+    },
+    {
+      "id": 23,
+      "name": "Application Synced but Progressing — readiness probe failing",
+      "prompt": "My Application unready-api in the eval-unready namespace is Synced but stuck Progressing. Pods look like they start. Debug why health never becomes Healthy.",
+      "expectations": [
+        "Retrieves the Application and reports health.status as Progressing and sync.status as Synced from live output",
+        "Inspects Pods and reports they are Running (or equivalent) but not Ready — diagnosing Pending/unschedulable or CrashLoopBackOff when evidence shows a failing readiness probe fails this expectation",
+        "Names readiness probe failure (failing readiness probe, Ready condition False, or probe path/port mismatch) with evidence from pod conditions, events, or the probe config on the Pod/Deployment",
+        "Does not treat this as ImagePullBackOff, CreateContainerConfigError, or an ApplicationSet generator issue",
+        "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a field value, Ready condition, probe config, or event line actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written.",
+        "Every recommended action states its IMPACT — what else is affected if someone acts on it (components that restart, other Applications or tenants affected, whether anything is deleted, and any ordering dependency on another recommendation) — not only its priority. 'Impact: nothing else is affected' counts; omitting the impact entirely does not. An impact reasoned from manifests rather than verified against a cluster must say so."
+      ]
     }
   ]
 }
