@@ -12,7 +12,7 @@ LABEL="argo-skills-eval-fixture=true"
 # would take it with us. Nothing below deletes a namespace it cannot first prove
 # carries our fixture label. setup.sh refuses to adopt a pre-existing namespace
 # for the same reason, so the label is only ever on namespaces we made.
-NAMESPACES=(apps finance eval-staging eval-production production prod)
+NAMESPACES=(apps finance eval-catalog eval-staging eval-production production prod)
 
 owned() {  # owned <ns> -> true if the namespace exists AND is ours
   [ "$($KCTL get ns "$1" -o jsonpath='{.metadata.labels.argo-skills-eval-fixture}' \

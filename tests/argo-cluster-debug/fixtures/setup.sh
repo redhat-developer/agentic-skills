@@ -17,6 +17,9 @@
 #   eval 6  checkout-api     blue-green held at preview (autoPromotionEnabled false)
 #   eval 8  billing-service  health Suspended         (paused blue-green Rollout)
 #   eval 9  platform-ui      ComparisonError          (multi-source, bad $values path)
+#   eval 13 bad-repo         ComparisonError          (unreachable repository)
+#   eval 14 bad-path         ComparisonError          (missing path in valid repo)
+#   eval 15 catalog          Synced AND Degraded      (bad image in desired source)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -33,7 +36,7 @@ NS_ARGOCD="${NS_ARGOCD:-openshift-gitops}"
 # ---------------------------------------------------------------------------
 echo "==> checking namespace ownership"
 conflict=0
-for ns in apps finance eval-staging eval-production production prod; do
+for ns in apps finance eval-catalog eval-staging eval-production production prod; do
   if $KCTL get ns "$ns" >/dev/null 2>&1; then
     if [ "$($KCTL get ns "$ns" -o jsonpath='{.metadata.labels.argo-skills-eval-fixture}' 2>/dev/null)" = "true" ]; then
       echo "    $ns — exists, ours (left over from a previous run)"
@@ -60,7 +63,7 @@ echo "==> creating namespaces first"
 # Namespace object is right there in the same document.
 awk 'BEGIN{RS="---\n"} /\nkind: Namespace\n/ {print "---"; print}' \
   "$HERE/manifests.yaml" | $KCTL apply -f -
-for ns in apps finance eval-staging eval-production production prod; do
+for ns in apps finance eval-catalog eval-staging eval-production production prod; do
   for _ in $(seq 1 12); do
     [ "$($KCTL get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null)" = "Active" ] && break
     sleep 2
@@ -112,6 +115,14 @@ echo "==> arming eval 9: hard-refresh platform-ui so the ComparisonError is popu
 $KCTL annotate applications.argoproj.io platform-ui -n "$NS_ARGOCD" \
   argocd.argoproj.io/refresh=hard --overwrite >/dev/null
 
+echo "==> arming evals 13/14: hard-refresh bad-repo and bad-path for ComparisonError"
+$KCTL annotate applications.argoproj.io bad-repo bad-path -n "$NS_ARGOCD" \
+  argocd.argoproj.io/refresh=hard --overwrite >/dev/null
+
+# Eval 15 (catalog): bad image + progressDeadlineSeconds:60 are both in the
+# Application's desired Kustomize source, so once synced it becomes
+# Synced+Degraded without a live-only patch (selfHeal would undo one).
+
 # ---------------------------------------------------------------------------
 # Evals 2 and 6 need a SECOND revision.
 #
@@ -160,8 +171,8 @@ sleep 120
 
 echo
 echo "==> state"
-echo "--- Applications (expect: podinfo OutOfSync/Degraded, billing-service Suspended,"
-echo "                 platform-ui Unknown with a ComparisonError) ---"
+echo "--- Applications (expect: podinfo OutOfSync/Degraded, catalog Synced/Degraded,"
+echo "                 billing-service Suspended, platform-ui/bad-repo/bad-path Unknown) ---"
 $KCTL get applications.argoproj.io -A \
   -o custom-columns='NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status' --no-headers
 
@@ -216,6 +227,10 @@ check "eval 1  podinfo health"          "$(app_health podinfo)"        "Degraded
 check "eval 8  billing-service health"  "$(app_health billing-service)" "Suspended"
 check "eval 9  platform-ui sync"        "$(app_sync platform-ui)"      "Unknown"
 check "eval 6  checkout-api phase"      "$($KCTL get rollout checkout-api -n prod -o jsonpath='{.status.phase}' 2>/dev/null)" "Paused"
+check "eval 13 bad-repo sync"           "$(app_sync bad-repo)"         "Unknown"
+check "eval 14 bad-path sync"           "$(app_sync bad-path)"         "Unknown"
+check "eval 15 catalog sync"            "$(app_sync catalog)"          "Synced"
+check "eval 15 catalog health"          "$(app_health catalog)"        "Degraded"
 
 if [ "$fail" -ne 0 ]; then
   echo

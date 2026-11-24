@@ -1,8 +1,8 @@
 # argo-cluster-debug eval fixtures — TEMPORARY, torn down after the run.
 # Every object carries argo-skills-eval-fixture=true so teardown is unambiguous.
 #
-# Covers evals 1, 2, 4, 5, 6, 8 and 9 — every scenario whose named resources did not
-# otherwise exist, which previously capped both arms at `partial`.
+# Covers evals 1, 2, 4, 5, 6, 8, 9, 13, 14 and 15 — every scenario whose named
+# resources did not otherwise exist, which previously capped both arms at `partial`.
 #
 # Namespaces `production` and `prod` are created here because that is what the eval
 # prompts name. teardown.sh will only delete a namespace that carries the fixture
@@ -20,6 +20,14 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: finance
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-catalog
   labels:
     argo-skills-eval-fixture: "true"
     pod-security.kubernetes.io/enforce: baseline
@@ -431,3 +439,83 @@ spec:
         server: https://kubernetes.default.svc
         namespace: apps
       syncPolicy: {}
+---
+# EVAL 13 — "Application bad-repo won't sync — status is Unknown"
+# Unreachable Git URL. Never syncs; ComparisonError carries the concrete message
+# (Repository not found / authentication required / failed to list refs).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bad-repo
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/this-org-does-not-exist-xyz123/no-such-repo.git
+    targetRevision: HEAD
+    path: manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apps
+  syncPolicy: {}
+---
+# EVAL 14 — "Application bad-path points at argocd-example-apps but stays Unknown"
+# Valid public repo, path that does not exist. Discriminates from eval 13: the
+# ComparisonError is about the path, not repository-not-found / auth.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bad-path
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: this-path-does-not-exist
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apps
+  syncPolicy: {}
+---
+# EVAL 15 — "Application catalog shows Synced but Degraded"
+# Bad image is IN the desired source (Kustomize images override), so after a
+# successful sync the live state matches git → Synced + Degraded via
+# ImagePullBackOff. Own destination namespace so it does not fight eval 1's
+# podinfo over the same guestbook Deployment in apps.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: catalog
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/nonexistent-eval:9.9.9
+      # Keep Degraded appearing in ~1min rather than the Deployment default of 10.
+      # Must live in desired state: selfHeal is on so a live-only patch would revert.
+      patches:
+        - target:
+            kind: Deployment
+          patch: |-
+            - op: add
+              path: /spec/progressDeadlineSeconds
+              value: 60
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-catalog
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true

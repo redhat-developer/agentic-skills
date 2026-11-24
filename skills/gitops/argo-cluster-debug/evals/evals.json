@@ -164,6 +164,49 @@
         "Does not use --cascade=false or force flags unless explicitly requested",
         "Does not execute the deletion until the resource-name confirmation is received"
       ]
+    },
+    {
+      "id": 13,
+      "name": "Application ComparisonError — unreachable repository",
+      "prompt": "My Application bad-repo in the openshift-gitops namespace won't sync — status is Unknown. Debug it.",
+      "expectations": [
+        "Retrieves the Application and reports sync.status as Unknown (or equivalent non-Synced comparison failure) from live output, not from the prompt alone",
+        "Finds a status.conditions entry of type ComparisonError and quotes or paraphrases the concrete message (for example Repository not found, authentication required, or failed to list refs) rather than inventing a generic 'repo problem'",
+        "Shows spec.source.repoURL (and path/targetRevision) from the Application and ties the ComparisonError to that URL — a root cause that never names the observed repoURL fails",
+        "Checks operationState / last sync result and reports that no successful sync ran (empty operationState, or a failed compare before sync) rather than assuming a SyncError on managed resources",
+        "Does not blame destination cluster RBAC, ImagePullBackOff, or an unhealthy Argo CD control plane unless live output actually shows those; inventing an unrelated cause when ComparisonError already explains Unknown sync fails this expectation",
+        "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a field value, condition type/message, or log line actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written.",
+        "Every recommended action states its IMPACT — what else is affected if someone acts on it (components that restart, other Applications or tenants affected, whether anything is deleted, and any ordering dependency on another recommendation) — not only its priority. 'Impact: nothing else is affected' counts; omitting the impact entirely does not. An impact reasoned from manifests rather than verified against a cluster must say so."
+      ]
+    },
+    {
+      "id": 14,
+      "name": "Application ComparisonError — missing path in valid repo",
+      "prompt": "My Application bad-path points at argocd-example-apps but stays Unknown and never syncs. Debug it.",
+      "expectations": [
+        "Retrieves the Application and reports sync.status as Unknown from live output",
+        "Finds ComparisonError whose message indicates the configured path does not exist (or equivalent path/directory missing error), not a repository-not-found / auth failure",
+        "Shows spec.source.repoURL, path, and targetRevision from the Application; the cited path must match the live spec (for example this-path-does-not-exist) and must be distinguished from a bad repoURL",
+        "Confirms the repo itself is reachable or that the error is specifically about path — does not recommend registering credentials for a public repo that already cloned successfully unless output shows an auth error",
+        "Does not treat this as a destination/health/ImagePull problem or as an ApplicationSet generator issue; those diagnoses without supporting output fail",
+        "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a field value, condition type/message, or log line actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written.",
+        "Every recommended action states its IMPACT — what else is affected if someone acts on it (components that restart, other Applications or tenants affected, whether anything is deleted, and any ordering dependency on another recommendation) — not only its priority. 'Impact: nothing else is affected' counts; omitting the impact entirely does not. An impact reasoned from manifests rather than verified against a cluster must say so."
+      ]
+    },
+    {
+      "id": 15,
+      "name": "Application Synced but Degraded — ImagePullBackOff",
+      "prompt": "My Application catalog in the eval-catalog namespace shows Synced but Degraded. Auto-sync already succeeded. Debug why health is Degraded.",
+      "expectations": [
+        "Retrieves the Application and reports sync.status as Synced and health.status as Degraded from live output — treating it as OutOfSync when output shows Synced fails this expectation",
+        "Checks status.conditions and reports the absence of ComparisonError/SyncError when none are present, or only cites conditions that actually exist",
+        "Checks operationState and reports the last sync as Succeeded (or equivalent) when that is what live output shows",
+        "Identifies the unhealthy managed resource (for example Deployment/eval-catalog/guestbook-ui) from Application health message or status.resources",
+        "Inspects the Pod/Deployment and names ImagePullBackOff (or ErrImagePull) plus the concrete image reference from the pod spec or events; a Degraded diagnosis with no image/pull evidence fails",
+        "Traces the bad image to the Application source configuration when applicable (for example a Kustomize images override or Helm image.repository/image.tag) rather than only patching the live Deployment",
+        "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a field value, pod phase, waiting reason, condition, or log/event line actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written.",
+        "Every recommended action states its IMPACT — what else is affected if someone acts on it (components that restart, other Applications or tenants affected, whether anything is deleted, and any ordering dependency on another recommendation) — not only its priority. 'Impact: nothing else is affected' counts; omitting the impact entirely does not. An impact reasoned from manifests rather than verified against a cluster must say so."
+      ]
     }
   ]
 }
