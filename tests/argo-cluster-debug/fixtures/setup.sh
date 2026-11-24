@@ -20,6 +20,10 @@
 #   eval 13 bad-repo         ComparisonError          (unreachable repository)
 #   eval 14 bad-path         ComparisonError          (missing path in valid repo)
 #   eval 15 catalog          Synced AND Degraded      (bad image in desired source)
+#   eval 16 crashloop-api    Synced AND Degraded      (CrashLoopBackOff, not pull)
+#   eval 17 pending-api      Synced AND Progressing   (Pending / unschedulable)
+#   eval 18 project-denied   SyncError                (AppProject denies Service)
+#   eval 19 payments-api     Synced AND Healthy       (positive control)
 set -euo pipefail
 
 HERE="$(cd "$(dirname "$0")" && pwd)"
@@ -36,7 +40,8 @@ NS_ARGOCD="${NS_ARGOCD:-openshift-gitops}"
 # ---------------------------------------------------------------------------
 echo "==> checking namespace ownership"
 conflict=0
-for ns in apps finance eval-catalog eval-staging eval-production production prod; do
+for ns in apps finance eval-catalog eval-crashloop eval-pending eval-project-deny eval-healthy \
+          eval-staging eval-production production prod; do
   if $KCTL get ns "$ns" >/dev/null 2>&1; then
     if [ "$($KCTL get ns "$ns" -o jsonpath='{.metadata.labels.argo-skills-eval-fixture}' 2>/dev/null)" = "true" ]; then
       echo "    $ns — exists, ours (left over from a previous run)"
@@ -63,7 +68,8 @@ echo "==> creating namespaces first"
 # Namespace object is right there in the same document.
 awk 'BEGIN{RS="---\n"} /\nkind: Namespace\n/ {print "---"; print}' \
   "$HERE/manifests.yaml" | $KCTL apply -f -
-for ns in apps finance eval-catalog eval-staging eval-production production prod; do
+for ns in apps finance eval-catalog eval-crashloop eval-pending eval-project-deny eval-healthy \
+          eval-staging eval-production production prod; do
   for _ in $(seq 1 12); do
     [ "$($KCTL get ns "$ns" -o jsonpath='{.status.phase}' 2>/dev/null)" = "Active" ] && break
     sleep 2
@@ -119,9 +125,19 @@ echo "==> arming evals 13/14: hard-refresh bad-repo and bad-path for ComparisonE
 $KCTL annotate applications.argoproj.io bad-repo bad-path -n "$NS_ARGOCD" \
   argocd.argoproj.io/refresh=hard --overwrite >/dev/null
 
-# Eval 15 (catalog): bad image + progressDeadlineSeconds:60 are both in the
-# Application's desired Kustomize source, so once synced it becomes
-# Synced+Degraded without a live-only patch (selfHeal would undo one).
+echo "==> arming eval 18: hard-refresh + sync project-denied so SyncError populates"
+$KCTL annotate applications.argoproj.io project-denied -n "$NS_ARGOCD" \
+  argocd.argoproj.io/refresh=hard --overwrite >/dev/null
+# Automated sync should attempt apply; annotate refresh again after a beat if needed.
+sleep 5
+$KCTL annotate applications.argoproj.io project-denied -n "$NS_ARGOCD" \
+  argocd.argoproj.io/refresh=hard --overwrite >/dev/null
+
+# Evals 15/16/17/19 arm from desired source alone (no live-only patches):
+#   catalog       Synced+Degraded (ImagePull)
+#   crashloop-api Synced+Degraded (CrashLoop)
+#   pending-api   Synced+Progressing (Pending)
+#   payments-api  Synced+Healthy
 
 # ---------------------------------------------------------------------------
 # Evals 2 and 6 need a SECOND revision.
@@ -171,8 +187,9 @@ sleep 120
 
 echo
 echo "==> state"
-echo "--- Applications (expect: podinfo OutOfSync/Degraded, catalog Synced/Degraded,"
-echo "                 billing-service Suspended, platform-ui/bad-repo/bad-path Unknown) ---"
+echo "--- Applications (expect: podinfo OutOfSync/Degraded; catalog+crashloop Synced/Degraded;"
+echo "                 pending Progressing; payments Healthy; billing Suspended;"
+echo "                 platform-ui/bad-repo/bad-path Unknown; project-denied SyncError) ---"
 $KCTL get applications.argoproj.io -A \
   -o custom-columns='NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status' --no-headers
 
@@ -231,6 +248,24 @@ check "eval 13 bad-repo sync"           "$(app_sync bad-repo)"         "Unknown"
 check "eval 14 bad-path sync"           "$(app_sync bad-path)"         "Unknown"
 check "eval 15 catalog sync"            "$(app_sync catalog)"          "Synced"
 check "eval 15 catalog health"          "$(app_health catalog)"        "Degraded"
+check "eval 16 crashloop-api sync"      "$(app_sync crashloop-api)"    "Synced"
+check "eval 16 crashloop-api health"    "$(app_health crashloop-api)"  "Degraded"
+check "eval 17 pending-api sync"        "$(app_sync pending-api)"      "Synced"
+check "eval 17 pending-api health"      "$(app_health pending-api)"    "Progressing"
+check "eval 19 payments-api sync"       "$(app_sync payments-api)"     "Synced"
+check "eval 19 payments-api health"     "$(app_health payments-api)"   "Healthy"
+
+# Eval 18: SyncError condition (sync status varies; condition is the signal)
+syncerr=$($KCTL get applications.argoproj.io project-denied -n "$NS_ARGOCD" \
+            -o jsonpath='{range .status.conditions[?(@.type=="SyncError")]}{.type}{end}' 2>/dev/null || true)
+opphase=$($KCTL get applications.argoproj.io project-denied -n "$NS_ARGOCD" \
+            -o jsonpath='{.status.operationState.phase}' 2>/dev/null || true)
+if [ "$syncerr" = "SyncError" ] || [ "$opphase" = "Failed" ] || [ "$opphase" = "Error" ]; then
+  echo "    [OK]   eval 18 project-denied SyncError/Failed (condition='$syncerr' op='$opphase')"
+else
+  echo "    [FAIL] eval 18 project-denied expected SyncError or Failed op, got condition='$syncerr' op='$opphase'"
+  fail=1
+fi
 
 if [ "$fail" -ne 0 ]; then
   echo

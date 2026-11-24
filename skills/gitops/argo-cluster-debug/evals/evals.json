@@ -207,6 +207,58 @@
         "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a field value, pod phase, waiting reason, condition, or log/event line actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written.",
         "Every recommended action states its IMPACT — what else is affected if someone acts on it (components that restart, other Applications or tenants affected, whether anything is deleted, and any ordering dependency on another recommendation) — not only its priority. 'Impact: nothing else is affected' counts; omitting the impact entirely does not. An impact reasoned from manifests rather than verified against a cluster must say so."
       ]
+    },
+    {
+      "id": 16,
+      "name": "Application Synced but Degraded — CrashLoopBackOff",
+      "prompt": "My Application crashloop-api in the eval-crashloop namespace shows Synced but Degraded. Debug why the pods will not stay up.",
+      "expectations": [
+        "Retrieves the Application and reports sync.status as Synced and health.status as Degraded from live output",
+        "Inspects the Pod/Deployment and names CrashLoopBackOff (or crash-loop / non-zero exit / restart loop) with evidence from pod status, restart count, or container lastState — diagnosing ImagePullBackOff or ErrImagePull when the image actually pulled fails this expectation",
+        "Shows container exit evidence (exit code, terminated reason, or a log line from the crashing container) rather than stopping at 'pod is unhealthy'",
+        "Does not blame a missing Git repo, ComparisonError, or AppProject restriction unless live output shows those",
+        "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a field value, pod phase, restart count, condition, or log line actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written.",
+        "Every recommended action states its IMPACT — what else is affected if someone acts on it (components that restart, other Applications or tenants affected, whether anything is deleted, and any ordering dependency on another recommendation) — not only its priority. 'Impact: nothing else is affected' counts; omitting the impact entirely does not. An impact reasoned from manifests rather than verified against a cluster must say so."
+      ]
+    },
+    {
+      "id": 17,
+      "name": "Application Synced but Progressing — pods Pending unschedulable",
+      "prompt": "My Application pending-api in the eval-pending namespace has been Progressing for a long time and never becomes Healthy. Debug it.",
+      "expectations": [
+        "Retrieves the Application and reports health.status as Progressing from live output — calling it Degraded when output shows Progressing fails this expectation",
+        "Reports sync.status as Synced (or equivalent successful compare/sync) when that is what live output shows",
+        "Inspects Pods and names Pending with an unschedulable / nodeSelector / affinity / resource reason from pod status or events — inventing ImagePullBackOff or CrashLoopBackOff without evidence fails",
+        "Ties the Pending state to the scheduling constraint actually configured (for example a nodeSelector label that matches no node) when that constraint is visible on the Pod or Deployment",
+        "Does not recommend promote/abort/retry of a Rollout or treat this as an ApplicationSet generator problem unless live output shows those objects are involved",
+        "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a field value, pod phase, condition, or event line actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written.",
+        "Every recommended action states its IMPACT — what else is affected if someone acts on it (components that restart, other Applications or tenants affected, whether anything is deleted, and any ordering dependency on another recommendation) — not only its priority. 'Impact: nothing else is affected' counts; omitting the impact entirely does not. An impact reasoned from manifests rather than verified against a cluster must say so."
+      ]
+    },
+    {
+      "id": 18,
+      "name": "Application SyncError — AppProject denies a synced resource",
+      "prompt": "My Application project-denied in openshift-gitops will not stay synced — sync keeps failing. Debug it.",
+      "expectations": [
+        "Retrieves the Application and finds a SyncError condition and/or a failed operationState, quoting or paraphrasing the concrete denial message (for example resource not permitted in project, or forbidden) rather than a generic 'sync failed'",
+        "Identifies that the failure is a sync/apply permission or AppProject allow-list problem, not a ComparisonError from Git clone or manifest generation — blaming an unreachable repo or missing path when output shows a project/resource denial fails",
+        "Shows which AppProject the Application uses (spec.project) and relates the error to that project's restrictions when visible",
+        "Does not treat this as ImagePullBackOff, CrashLoopBackOff, or a Rollout pause",
+        "Produces a report with root cause and recommendations. Every root cause asserted is backed by the specific observation that establishes it (a field value, condition type/message, or log line actually shown). A cause asserted with no supporting output, or contradicted by output shown elsewhere in the same answer, fails this expectation even if it is plausible and well written.",
+        "Every recommended action states its IMPACT — what else is affected if someone acts on it (components that restart, other Applications or tenants affected, whether anything is deleted, and any ordering dependency on another recommendation) — not only its priority. 'Impact: nothing else is affected' counts; omitting the impact entirely does not. An impact reasoned from manifests rather than verified against a cluster must say so."
+      ]
+    },
+    {
+      "id": 19,
+      "name": "Healthy Synced Application — no fault to invent",
+      "prompt": "Something feels off with Application payments-api in the eval-healthy namespace — please debug it thoroughly and tell me what is wrong.",
+      "expectations": [
+        "Retrieves the Application and reports sync.status as Synced and health.status as Healthy from live output",
+        "States explicitly that no fault was found (or that the Application is healthy) rather than inventing a root cause to satisfy the prompt's implication that something is wrong",
+        "Does not claim ComparisonError, SyncError, ImagePullBackOff, CrashLoopBackOff, or Pending pods unless live output actually shows them",
+        "Still performs basic checks (Application status, managed resources or pods) so the healthy verdict is evidenced, not assumed from the name alone",
+        "Produces a report whose conclusion matches the observed healthy state. A report that asserts a failure contradicted by the output shown in the same answer fails this expectation."
+      ]
     }
   ]
 }

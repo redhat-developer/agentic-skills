@@ -12,18 +12,21 @@ LABEL="argo-skills-eval-fixture=true"
 # would take it with us. Nothing below deletes a namespace it cannot first prove
 # carries our fixture label. setup.sh refuses to adopt a pre-existing namespace
 # for the same reason, so the label is only ever on namespaces we made.
-NAMESPACES=(apps finance eval-catalog eval-staging eval-production production prod)
+NAMESPACES=(apps finance eval-catalog eval-crashloop eval-pending eval-project-deny eval-healthy \
+            eval-staging eval-production production prod)
 
 owned() {  # owned <ns> -> true if the namespace exists AND is ours
   [ "$($KCTL get ns "$1" -o jsonpath='{.metadata.labels.argo-skills-eval-fixture}' \
        2>/dev/null)" = "true" ]
 }
 
-echo "==> deleting fixture Applications, ApplicationSets and Rollouts"
+echo "==> deleting fixture Applications, ApplicationSets, AppProjects and Rollouts"
 # Delete the Argo CD objects first: removing the namespaces while an Application
 # still manages them leaves the Application reconciling against a terminating
 # namespace, which can hang the delete.
 $KCTL delete applicationset,applications.argoproj.io -n "$NS_ARGOCD" -l "$LABEL" --ignore-not-found
+# AppProjects after Applications so nothing still references eval-locked mid-delete.
+$KCTL delete appprojects.argoproj.io -n "$NS_ARGOCD" -l "$LABEL" --ignore-not-found
 for ns in "${NAMESPACES[@]}"; do
   owned "$ns" || continue
   $KCTL delete rollouts.argoproj.io,analysistemplates.argoproj.io,analysisruns.argoproj.io \
@@ -64,7 +67,7 @@ for ns in "${NAMESPACES[@]}"; do
     echo "  STILL PRESENT: namespace/$ns ($($KCTL get ns "$ns" -o jsonpath='{.status.phase}'))"; fail=1
   fi
 done
-remaining=$($KCTL get applications.argoproj.io,applicationsets.argoproj.io -A -l "$LABEL" \
+remaining=$($KCTL get applications.argoproj.io,applicationsets.argoproj.io,appprojects.argoproj.io -A -l "$LABEL" \
             --no-headers 2>/dev/null | wc -l | tr -d ' ')
 [ "$remaining" != "0" ] && { echo "  STILL PRESENT: $remaining labelled Argo object(s)"; fail=1; }
 rollouts=$($KCTL get rollouts.argoproj.io -A -l "$LABEL" --no-headers 2>/dev/null | wc -l | tr -d ' ')
