@@ -1,332 +1,51 @@
-# Argo Cluster Debug — Troubleshooting Reference
+# Component troubleshooting
 
-> **Component selectors:** `$CR` is the ArgoCD instance's name — `openshift-gitops`,
-> `team-b`, etc. Operator-managed workloads are labelled `<cr-name>-<component>`, so a
-> hardcoded `app.kubernetes.io/name=argocd-server` matches **nothing** and the component
-> reads as absent. Resolve it alongside `$NS`:
->
-> ```bash
-> CR=$(kubectl get argocd -n "$NS" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-> CR=${CR:-argocd}   # falls back to the Helm/standalone naming
-> ```
->
-> On a Helm or plain-manifest install the components really are `argocd-*`, so the
-> fallback makes the same commands work on both.
+Use only for an inconclusive specialized check or a component-specific symptom.
+Reuse instance ownership, observed workload selectors and evidence from `../SKILL.md`.
+`APP_NS` is the Application namespace; `NS` is the instance namespace. Do not choose
+the first CR, assume a standalone prefix, or infer absence from a denied read.
 
-> **Namespace:** `$NS` below is the Argo CD instance's namespace. It is **`openshift-gitops`
-> on OpenShift GitOps**, `argocd` on a standalone install, and something else entirely for a
-> second instance. There is frequently more than one — resolve it once and reuse it:
->
-> ```bash
-> kubectl get argocd -A    # operator-managed instances and their namespaces
-> NS=openshift-gitops      # set to the instance you are working on
-> ```
->
-> The same applies to `namespace: argocd` inside the YAML below — it is a placeholder for
-> the Argo CD instance's namespace. An Application created in `argocd` on a cluster whose
-> instance lives in `openshift-gitops` is never picked up, with no error anywhere.
-> (`namespace:` on an Application's **destination** is a different field — that one is the
-> workload's namespace and is unrelated.)
+## Application sync issues
 
-Symptom-to-cause mappings organized by Argo component. Read the relevant section only when a selected workflow is inconclusive. Dedicated
-health and sync routers own their status rules.
+Read the direct procedure; do not run a second generic sync checklist:
 
----
+| Signal | Reference |
+|---|---|
+| Repository authentication, manifest generation, invalid spec, comparison unavailable | `sync-comparison-error.md` |
+| Destination controller authorization | `operator-rbac.md` |
+| Ignored Application / source-namespace access | `operator-apps-in-any-namespace.md` |
+| OutOfSync without a running operation | `sync-outofsync.md` |
+| Failed operation | `sync-failed.md` |
+| Running or Terminating operation | `sync-stuck.md` |
+| Synced but unexpected state | `sync-false-synced.md` |
+| Status selection unresolved | `app-sync-triage.md` |
 
-## Application Sync Failures
-
-> When the sync state itself is the symptom, `app-sync-triage.md` owns
-> the diagnosis and routes by state — `OutOfSync`, sync `Unknown`, stuck, failed, or
-> `Synced` but wrong. Load it instead of working down this section. The tables below
-> remain useful as a symptom index alongside it.
-
-### ComparisonError: invalid manifests
-
-**Symptoms:** Application status shows `ComparisonError` condition. `.status.conditions[].message` contains schema validation or parsing errors.
-
-**Causes:**
-- Invalid YAML in the source repo (indentation, missing fields)
-- CRD not installed on the cluster — manifests reference a Kind the API server doesn't know about
-- Helm template rendering failure — missing values, incompatible chart version
-- Kustomize build failure — missing bases, invalid strategic merge patch
-- jsonnet compilation error
-
-**Debug:**
-```bash
-# Check the condition message
-kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{.status.conditions[*].message}'
-
-# Check repo-server logs for manifest generation errors
-kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-repo-server --tail=200 | grep -i error
-
-# For Helm: try rendering locally
-helm template <chart-path> -f <values-file>
-
-# For Kustomize: try building locally
-kustomize build <path>
-```
-
-### SyncError: permission denied (RBAC)
-
-**Symptoms:** Sync fails with `Unauthorized` or `forbidden` in the operation state message.
-
-**Causes:**
-- The Argo CD application controller ServiceAccount lacks RBAC to create/update the target resource
-- On an operator-managed namespace-scoped instance, the destination namespace was never granted. The operator creates that Role and RoleBinding from `argocd.argoproj.io/managed-by` or from a completed `NamespaceManagement` handshake. Do not create them by hand. Use `operator-troubleshooting.md` for this case.
-- AppProject `clusterResourceWhitelist` or `namespaceResourceBlacklist` blocks the resource
-- Destination namespace not allowed by the AppProject
-
-**Debug:**
-```bash
-# Check the operation state
-kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{.status.operationState.syncResult.resources[*]}' | python3 -m json.tool
-
-# Check AppProject restrictions
-kubectl get appproject <project-name> -n "$NS" -o yaml
-
-# Verify the controller can create the resource
-# The controller SA is <cr-name>-argocd-application-controller in the INSTANCE namespace.
-# Getting this wrong is worse than useless: auth can-i answers "no" for a service account
-# that does not exist, which reads as "RBAC is broken" when nothing is broken.
-# Verified: the wrong SA returns "no", the real one returns "yes" on the same cluster.
-kubectl auth can-i create <resource> \
-  --as=system:serviceaccount:"$NS":"$CR"-argocd-application-controller -n <target-namespace>
-```
-
-On an operator-managed instance, a missing Role in the destination namespace is fixed
-by the `argocd.argoproj.io/managed-by` label or by `NamespaceManagement`, not by
-applying a RoleBinding. Load `operator-troubleshooting.md` before
-recommending any RBAC manifest. The objects the operator owns are named
-`<cr-name>-argocd-application-controller` and `<cr-name>-argocd-server`.
-
-### OutOfSync but auto-sync not triggering
-
-**Symptoms:** Application shows OutOfSync, but `syncPolicy.automated` is configured and no sync operation starts.
-
-**Causes:**
-- `syncPolicy.automated` is missing entirely — check for typos (`automated` not `automatic`)
-- Application has a `SyncError` condition from a previous failed sync — auto-sync backs off on repeated failures
-- Application is in a `Progressing` health state — auto-sync waits for health before re-syncing
-- `spec.syncPolicy.automated.selfHeal` is false — changes to live resources won't trigger sync
-- AppProject sync windows are blocking the sync
-
-**Debug:**
-```bash
-# Check syncPolicy
-kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{.spec.syncPolicy}'
-
-# Check for sync error backoff
-kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{.status.operationState.retryCount}'
-
-# Check sync windows on the AppProject
-kubectl get appproject <project> -n "$NS" -o jsonpath='{.spec.syncWindows}'
-
-# Check application-controller logs for sync decisions
-kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-application-controller --tail=200 | grep <app-name>
-```
-
-### Sync stuck in Progressing
-
-**Symptoms:** Sync operation shows as `Running` indefinitely. Resources never reach `Healthy` state.
-
-**Causes:**
-- A resource has a finalizer preventing deletion during sync (common with replaced resources)
-- A webhook (mutating or validating) is blocking resource creation
-- A Deployment rollout is stuck (image pull failure, crashloop, resource limits)
-- PersistentVolumeClaim is stuck in `Pending` (no StorageClass, no available PV)
-- A Job never completes (infinite loop, waiting for resource that doesn't exist)
-
-**Debug:**
-```bash
-# Inspect sync state; obtain health separately via resource-health.md on Argo CD 3.x.
-kubectl get applications.argoproj.io <name> -n "$APP_NS" -o jsonpath='{range .status.resources[*]}{.kind}/{.name}: sync={.status}{"\n"}{end}'
-
-# Check for stuck deletions (finalizers)
-kubectl get <kind> <name> -n <namespace> -o jsonpath='{.metadata.finalizers}'
-
-# Check for webhook rejections
-kubectl get events -n <namespace> --field-selector reason=FailedCreate
-```
-
-### "rpc error: code = Unknown" on Application
-
-**Symptoms:** Application shows `rpc error: code = Unknown desc = ...` in conditions or operation state.
-
-**Causes:**
-- Repo-server crashed or is overloaded — manifest generation timed out
-- Git repository is unreachable (network, authentication)
-- Manifest generation exceeds `reposerver.timeout.seconds` (default: 60s in argocd-cm)
-- Large repositories with many files causing OOM in repo-server
-
-**Debug:**
-```bash
-# Check repo-server health
-kubectl get pods -n "$NS" -l app.kubernetes.io/name=$CR-repo-server
-
-# Check repo-server resource usage
-kubectl top pods -n "$NS" -l app.kubernetes.io/name=$CR-repo-server
-
-# Check repo connectivity (repo-server no longer ships git binary since v2.5+)
-# Option 1: Use argocd CLI if available
-argocd repo list
-# Option 2: Check repo-server logs for fetch errors
-kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-repo-server --tail=200 | grep -i -E 'repo|fetch|clone|error'
-
-# Check timeout config
-kubectl get configmap argocd-cm -n "$NS" -o jsonpath='{.data.reposerver\.timeout\.seconds}'
-```
-
-### Helm rendering failures
-
-**Symptoms:** ComparisonError with Helm template errors.
-
-**Causes:**
-- `valueFiles` paths are relative to the chart root, not the repo root
-- Chart dependency not built (`helm dependency build` needed)
-- Values file has wrong schema for the chart version
-- `helm.parameters` override syntax is wrong
-- Chart version pinned in `spec.source.chart` doesn't exist in the Helm repo
-
-**Debug:**
-```bash
-# Check the source config
-kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{.spec.source.helm}' | python3 -m json.tool
-
-# Try rendering locally with the same values
-helm template <release-name> <chart> -f <values.yaml> --version <version>
-```
-
-### Kustomize build failures
-
-**Symptoms:** ComparisonError with Kustomize build errors.
-
-**Causes:**
-- Missing `resources` or `bases` entries in kustomization.yaml
-- Invalid strategic merge patch (patch target not found)
-- Remote base URL is unreachable
-- `namePrefix`/`nameSuffix` conflicts with label selectors
-- Kustomize version mismatch (v4 vs v5 syntax differences)
-
-**Debug:**
-```bash
-# Check Kustomize version Argo CD is using
-kubectl get configmap argocd-cm -n "$NS" -o jsonpath='{.data.kustomize\.buildOptions}'
-
-# Try building locally
-kustomize build <path>
-```
-
----
+For repo-server timeouts, distinguish repository connectivity, renderer execution,
+and controller/server RPC deadlines from their actual error messages. Inspect the
+relevant effective configuration and running version; do not assume all `rpc error`
+messages mean OOM or increase a timeout without evidence. Controller capacity issues
+can require `../../argo-performance-tuning/SKILL.md`.
 
 ## Health Check Issues
 
-For Application health status, load `app-health-triage.md` and its selected leaf.
-Those health-assessment and rollup rules take precedence over the general symptom
-examples below; a workload symptom alone does not establish its Argo CD health status.
-Load `resource-health.md` to resolve inline versus external health before using a
-health filter below. Missing `.health` fields are not findings; use the CLI/API fallback.
+Use [Application health triage](app-health-triage.md) for health-assessment rules,
+Application rollup semantics, and status selection. The specialized guides below own
+the diagnostic procedures; read the matching guide before choosing checks.
 
-### Degraded
+Before filtering per-resource health, follow
+[resource health retrieval](resource-health.md) or reuse its successful current-run
+snapshot. Missing inline health fields are not findings.
 
-**Symptoms:** Application health is `Degraded`. One or more managed resources are unhealthy.
+| Signal | Required reference |
+|--------|--------------------|
+| `Degraded` | [Degraded health](health-degraded.md) |
+| Sustained `Progressing` | [Progressing health](health-progressing.md) |
+| `Missing` | [Missing health](health-missing.md) |
+| Health `Unknown` | [Unknown health](health-unknown.md) |
+| Status unclear or aggregate health unexplained | [Application health triage](app-health-triage.md) |
 
-**Common causes by resource kind:**
-
-| Kind | Degraded Cause |
-|------|---------------|
-| Deployment | ReplicaSet has unavailable replicas — pod CrashLoopBackOff, ImagePullBackOff |
-| StatefulSet | Pod stuck in Pending or CrashLoopBackOff |
-| DaemonSet | Pods not scheduled on expected nodes |
-| Service | Endpoint has no ready addresses (no pods matching selector) |
-| Ingress | Backend Service not found |
-| PersistentVolumeClaim | Stuck in Pending (no matching PV, StorageClass missing) |
-| Job | Failed (backoffLimit reached) |
-
-**Debug:**
-```bash
-# Find the degraded resource
-kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{range .status.resources[?(@.health.status=="Degraded")]}{.kind}/{.namespace}/{.name}{"\n"}{end}'
-
-# Get events for the degraded resource
-kubectl describe <kind> <name> -n <namespace>
-```
-
-### Progressing
-
-**Symptoms:** Application health stays `Progressing` indefinitely.
-
-**Causes:**
-- Deployment rollout waiting for new pods to become ready
-- StatefulSet rolling update in progress
-- Argo Rollout in canary/blue-green progression
-- New pod stuck in `Init:0/1` (init container not completing)
-
-**Debug:**
-```bash
-# Check rollout status
-kubectl rollout status deployment/<name> -n <namespace> --timeout=10s
-
-# Check pod status
-kubectl get pods -n <namespace> -l <selector> --sort-by='.status.startTime'
-```
-
-### Missing
-
-**Symptoms:** Application aggregate health is `Missing`. On Argo CD 3.4, absent
-live resources are individually skipped from the rollup; the normal aggregate case
-is expected non-hook resources with none live. A live custom health check can also
-return `Missing`. Use `health-missing.md` to distinguish those cases; one absent
-resource alongside a live workload does not establish aggregate `Missing`.
-
-**Causes:**
-- Resource was deleted from the cluster but exists in the desired state
-- Namespace doesn't exist yet (sync wave ordering issue)
-- CRD not installed — the resource Kind is unknown to the API server
-- RBAC prevents Argo CD from reading the resource
-
-**Debug:**
-```bash
-# Verify each expected object's presence on the actual destination cluster.
-kubectl get <kind> <name> -n <namespace>
-
-# Check if the CRD exists
-kubectl get crd <crd-name>
-
-# Check RBAC
-kubectl auth can-i get <resource> \
-  --as=system:serviceaccount:"$NS":"$CR"-argocd-application-controller -n <namespace>
-# (a nonexistent SA answers "no" — confirm the SA exists before believing a denial:
-#  kubectl get sa -n "$NS" | grep application-controller)
-```
-
-### Unknown
-
-**Symptoms:** Application health shows `Unknown` for a custom resource.
-
-**Causes:**
-- No built-in health check for the CRD's Kind
-- Custom health check Lua script has a syntax error
-- Custom health check returns `nil` or an unexpected status
-
-**Debug:**
-```bash
-# Check for custom health checks in argocd-cm
-kubectl get configmap argocd-cm -n "$NS" -o yaml | grep -A20 'resource.customizations.health'
-
-# Check in argocd-cm data for the specific Kind
-kubectl get configmap argocd-cm -n "$NS" -o jsonpath='{.data}' | python3 -c "
-import sys, json
-data = json.load(sys.stdin)
-for k,v in data.items():
-    if 'health' in k:
-        print(f'{k}:\n{v}\n')
-"
-```
-
-**Custom health check location (v2.x):**
-- `argocd-cm` ConfigMap with separate keys per resource kind: `data["resource.customizations.health.<group>_<kind>"]`
-- Example: `resource.customizations.health.certmanager.io_Certificate` or `resource.customizations.health.argoproj.io_Rollout`
-- The old `data["resource.customizations"]` YAML block format is deprecated in v2.x — each customization type (health, actions, ignoreDifferences) uses its own dot-separated key
+Continue any independent sync or operator findings through the matching route in
+[the parent skill](../SKILL.md). Completing health triage does not close those findings.
 
 ---
 
@@ -387,8 +106,8 @@ kubectl get applications.argoproj.io -n "$NS" -o jsonpath='{range .items[*]}{.me
 # Check requeueAfterSeconds
 kubectl get applicationset <name> -n "$NS" -o jsonpath='{.spec.generators[*].scmProvider.requeueAfterSeconds}'
 
-# Compare recent controller activity without mutating the ApplicationSet
-kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-applicationset-controller --tail=100
+# Force reconciliation by touching the ApplicationSet
+kubectl annotate applicationset <name> -n "$NS" refreshed-at="$(date +%s)" --overwrite
 ```
 
 ### Progressive sync stuck
@@ -523,47 +242,6 @@ kubectl get replicaset -n <namespace> -l app=<app-label> -o custom-columns='NAME
 
 ---
 
-
-
-## Common kubectl Commands
-
-Quick reference for the most-used debug commands across all Argo components.
-
-### Argo CD
-
-| Command | Purpose |
-|---------|---------|
-| `kubectl get applications.argoproj.io -n "$NS"` | List all Applications |
-| `kubectl get applications.argoproj.io -n "$NS" -o custom-columns='NAME:.metadata.name,SYNC:.status.sync.status,HEALTH:.status.health.status'` | Application status summary |
-| `kubectl get applicationsets -n "$NS"` | List all ApplicationSets |
-| `kubectl get appprojects -n "$NS"` | List all AppProjects |
-| `kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-application-controller --tail=100` | Controller logs |
-| `kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-repo-server --tail=100` | Repo server logs |
-| `kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-server --tail=100` | API server logs |
-| `kubectl get configmap argocd-cm -n "$NS" -o yaml` | Server configuration |
-| `kubectl get secrets -n "$NS" -l argocd.argoproj.io/secret-type=repository` | Configured repositories |
-| `kubectl get secrets -n "$NS" -l argocd.argoproj.io/secret-type=cluster` | Configured clusters |
-| `argocd app list` | List apps (CLI) |
-| `argocd app get <name>` | App detail (CLI) |
-| `argocd app diff <name>` | Show diff (CLI). **Often unusable on OpenShift GitOps**: in `--core` mode it looks for `app.kubernetes.io/name=argocd-redis`, which the operator names `<cr-name>-redis`; `--redis-name "$CR"-redis` gets one step further and then fails `NOAUTH Authentication required`. It also exits 0 despite printing `FATAL`, so check output not exit code. Fall back to `kubectl get application <name> -o jsonpath='{.status.resources}'` |
-| `argocd app history <name>` | Sync history (CLI) |
-
-### Argo Rollouts
-
-| Command | Purpose |
-|---------|---------|
-| `kubectl get rollouts -n <ns>` | List Rollouts |
-| `kubectl get analysisrun -n <ns> --sort-by='.metadata.creationTimestamp'` | List AnalysisRuns |
-| `kubectl get analysistemplate -n <ns>` | List AnalysisTemplates |
-| `kubectl get experiments -n <ns>` | List Experiments |
-| `kubectl argo rollouts get rollout <name> -n <ns>` | Rollout detail (plugin CLI) |
-| `kubectl argo rollouts status <name> -n <ns>` | Rollout status (plugin CLI) |
-| `kubectl argo rollouts list rollouts -n <ns>` | List rollouts (plugin CLI) |
-| `kubectl get replicaset -n <ns> -l app=<label> -o wide` | ReplicaSets for a Rollout |
-| `kubectl logs -n "$NS" -l app.kubernetes.io/name=argo-rollouts` | Rollouts controller logs. **On OpenShift GitOps the controller runs in the Argo CD instance namespace, not `argo-rollouts`** — it is reconciled from a `RolloutManager` CR. Find it with `kubectl get deploy -A \| grep argo-rollouts` |
-
-
-
 ## Version-Specific Notes
 
 ### Argo CD v2.14+
@@ -579,5 +257,3 @@ Quick reference for the most-used debug commands across all Argo components.
 - Improved Istio multi-cluster support
 - `spec.strategy.canary.dynamicStableScale` for optimized replica management
 - `spec.analysis.measurementRetention` for keeping measurement history
-
-

@@ -5,20 +5,23 @@ from a name that does not resolve. Typo, wrong namespace, wrong cluster context,
 Argo CD instance, or already deleted. **Establish this before running any workflow**, or
 you will produce a confident analysis of nothing.
 
+Reuse the established cluster context and candidate namespaces. Verify the fully
+qualified resource name and exact requested identity first. Only widen the search
+when those reads succeed but do not locate it:
+
 ```bash
-# 1. Search cluster-wide. Always the FULL resource name — see the gotcha below.
-$KCTL get applications.argoproj.io -A | grep -i <name>
-
-# 2. Not there? It may have been deleted recently.
-$KCTL get events -A --field-selector involvedObject.name=<name> \
-  --sort-by=.lastTimestamp 2>/dev/null | tail -5
-
-# 3. Confirm you are on the cluster the user means.
-$KCTL config current-context
-
-# 4. Confirm which Argo CD instance should own it.
-$KCTL get argocd -A
+# Optional wider lookup; do not repeat when the current-run inventory already covers it.
+$KCTL get applications.argoproj.io -A --field-selector metadata.name="$APP" \
+  -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name
+# If deletion is plausible, start in the expected namespace and preserve read errors.
+$KCTL get events -n "$APP_NS" --field-selector involvedObject.name="$APP" \
+  --sort-by=.lastTimestamp | tail -5
 ```
+
+A denied search leaves the target unresolved; it does not show absence. A successful
+empty exact-name search can justify checking likely typos in accessible candidate
+namespaces. If context or ownership is still unknown, use Workflow 1 in
+`debug-workflows.md`; do not rediscover it merely because a handoff occurred.
 
 **Gotcha — the short form can resolve to the wrong CRD.** On clusters running Open
 Cluster Management (common on OpenShift), `kubectl get application <name>` resolves to
@@ -59,4 +62,3 @@ An empty result from a bare short name is not evidence of absence.
 **Then report it as a finding, not a failure.** State what you searched and what exists.
 If you demonstrate the method on a different resource, say so in the heading — never let
 a substitute read as the user's resource.
-

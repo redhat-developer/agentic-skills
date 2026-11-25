@@ -44,13 +44,10 @@ Examples:
 ### Live Cluster Debugging
 
 When users report issues with Argo resources on a live cluster, need to inspect
-resource status, or want to troubleshoot Application health/sync, operator-owned
-permission errors, ignored Applications with no status, or Rollout failures — apply
+resource status, or want to troubleshoot sync/rollout/workflow failures — apply
 the **argo-cluster-debug** skill workflows.
 
-Verify the owning Argo CD installation, reusing evidence already gathered in this run,
-then select the matching health, sync, operator or general workflow. Unattended
-diagnosis reports confidence and unavailable checks without asking questions.
+Always start by verifying the Argo CD installation.
 
 Examples:
 - "Why is my Application stuck in OutOfSync?"

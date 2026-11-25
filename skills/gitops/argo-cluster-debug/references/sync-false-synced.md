@@ -20,13 +20,16 @@ A `Synced` from twenty minutes ago says nothing about now.
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
 'reconciledAt={.status.reconciledAt}{"\n"}'\
 'syncedRevision={.status.sync.revision}{"\n"}'\
-'targetRevision={.spec.source.targetRevision}{"\n"}'
+'targetRevision={.spec.source.targetRevision}{"\n"}'\
+'revisions={.status.sync.revisions}{"\n"}'\
+'{range .spec.sources[*]}repo={.repoURL} target={.targetRevision} path={.path} chart={.chart} ref={.ref}{"\n"}{end}'
 date -u +%Y-%m-%dT%H:%M:%SZ
 ```
 
-Default polling is `timeout.reconciliation`, 180s. A `reconciledAt` far older than that
-means the Application is not being reconciled — the controller is wedged, sharded
-elsewhere, or not watching this Application at all.
+Check effective polling and webhook policy before diagnosing an old comparison. In
+3.4 the defaults are 120s plus up to 60s jitter; custom intervals and disabled polling
+are supported. Use `sync-outofsync.md` section 4 for freshness/revision checks, reusing
+the source-index/revision mapping for multi-source Applications.
 
 Then confirm the synced revision is the commit you expect. The most common version of
 "Synced but wrong" is simply that `status.sync.revision` is an older commit than the
@@ -82,24 +85,29 @@ does not match and the Application genuinely reports `Synced`.
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
   -o jsonpath='{.spec.ignoreDifferences}{"\n"}'
 
-$KCTL get cm argocd-cm -n "$NS" -o yaml | grep -n "ignoreDifferences" -A 15
+# Example implicated kind; adapt to the resource and inspect legacy/wildcard entries if used.
+$KCTL get cm argocd-cm -n "$NS" \
+  -o jsonpath='{.data.resource\.customizations\.ignoreDifferences\.apps_Deployment}{"\n"}'
 ```
 
 Also check the annotations on the resource itself:
 
 | Annotation | Effect |
 |---|---|
-| `argocd.argoproj.io/compare-options: IgnoreExtraneous` | The resource is excluded from the diff entirely. |
+| `argocd.argoproj.io/compare-options: IgnoreExtraneous` | An extraneous live resource does not make the Application OutOfSync. This does not suppress field differences on a desired resource, remove its health assessment, or disable pruning. |
 | `argocd.argoproj.io/sync-options: Prune=false` | Kept, but still compared. |
 
 A system-level `ignoreDifferences` in `argocd-cm` applies to every Application on the
 instance, so this cause can be invisible from the Application spec alone. Check both
 places before concluding there is no suppression.
 
+Source: [Argo CD 3.4 compare options](https://argo-cd.readthedocs.io/en/release-3.4/user-guide/compare-options/).
+
 ## 4. Is the resource managed at all?
 
-Argo CD only diffs what the rendered source produces. A resource missing from the
-render is not "out of sync" — it is out of scope.
+Distinguish never-managed objects from tracked live-only resources: the latter can
+be extraneous/prune candidates and contribute to OutOfSync. Check rendered source,
+tracking identity, exclusions and compare options before declaring an object out of scope.
 
 Causes that silently drop a resource from the desired state:
 
@@ -125,21 +133,14 @@ If the object differs from git and Argo CD reports `Synced`, and sections 1 to 4
 clear, the live change is in a field the comparison does not reach.
 
 ```bash
-$KCTL get <kind> <name> -n <ns> -o yaml | head -40
+$KCTL get <kind> <name> -n <ns> -o jsonpath='<specific differing fields>'
 $KCTL get events -n <ns> --field-selector involvedObject.name=<name> --sort-by=.lastTimestamp | tail -10
 ```
 
-Check `selfHeal` before saying anything about reverting it:
-
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='selfHeal={.spec.syncPolicy.automated.selfHeal}{"\n"}'
-```
-
-With `selfHeal: false` — the default — a manual cluster change is detected as
-`OutOfSync` but never reverted automatically. With `selfHeal: true` it is reverted
-within seconds, which is why a manual change appears to "not take" rather than to
-conflict.
+Reuse the effective automation policy (`../SKILL.md`). `selfHeal: true` does not
+cause reversion when `automated.enabled: false`; and an ignored difference may not
+trigger self-heal at all. Correlate an actual controller operation before attributing
+a live edit's disappearance to Argo CD. Durable intended changes still belong in Git.
 
 ## 6. Report
 

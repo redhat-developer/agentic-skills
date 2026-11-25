@@ -12,16 +12,16 @@ than `.status.resources[].health` in the Kubernetes Application CR. Aggregate
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='source={.status.resourceHealthSource}{"\n"}health={.status.health.status}{"\n"}reconciledAt={.status.reconciledAt}{"\n"}'
-$KCTL get cm argocd-cmd-params-cm -n "$NS" \
-  -o jsonpath='{.data.controller\.resource\.health\.persist}{"\n"}'
+  -o jsonpath='source={.status.resourceHealthSource}{"\n"}health={.status.health}{"\n"}reconciledAt={.status.reconciledAt}{"\n"}resources={.status.resources}{"\n"}'
 ```
 
 `resourceHealthSource: appTree` means the tree is required. `inline` means the
 controller persisted per-resource health. The setting `controller.resource.health.persist=true`
-enables inline persistence; inspect the effective controller configuration if the
-ConfigMap and observed output disagree. An absent flag or denied ConfigMap read is
-not proof that persistence is enabled. Do not enable it during diagnosis.
+enables inline persistence. Inspect effective controller configuration only when
+the source and observed output disagree. Read only the
+`controller.resource.health.persist` key in `argocd-cmd-params-cm` when needed to
+resolve that discrepancy; it is not a prerequisite when the source is established.
+An absent flag or denied ConfigMap read is not proof that persistence is enabled. Do not enable it during diagnosis.
 
 An empty health field can also mean that a kind has no health assessment. Never turn
 an absent value into `Healthy`, `Unknown`, or an unhealthy finding. In particular,
@@ -29,19 +29,24 @@ an absent value into `Healthy`, `Unknown`, or an unhealthy finding. In particula
 
 ## 2. Collect the resource snapshot
 
-When populated inline, inspect the complete resource list:
-
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o json
-```
+When populated inline, reuse the complete resource list above. It omits Application
+annotations and spec values while preserving resource identities, sync and health.
+Do not repeat the fetch solely to change output format.
 
 When health is external or incomplete, use an authenticated CLI against the owning
 Argo CD server, without `--refresh` or `--hard-refresh`:
 
 ```bash
-argocd app get "$APP" --app-namespace "$APP_NS" -o json
+# Preserve command failures rather than treating empty/invalid output as no findings.
+set -o pipefail
+argocd app get "$APP" --app-namespace "$APP_NS" -o json | python3 -c '
+import json, sys
+app = json.load(sys.stdin)
+status = app.get("status", {})
+print(json.dumps({"health": status.get("health"), "reconciledAt": status.get("reconciledAt"), "resourceHealthSource": status.get("resourceHealthSource"), "resources": status.get("resources")}))'
 ```
 
+This projection requires Python 3; an existing runtime JSON filter is an alternative.
 The CLI retrieves tree health for the Application. Preserve resource identity
 (group/kind/namespace/name), health status/message, and sync status. If using the
 runtime's existing authenticated API client instead, the read-only endpoint is:

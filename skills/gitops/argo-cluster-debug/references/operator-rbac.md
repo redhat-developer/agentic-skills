@@ -1,13 +1,20 @@
-<!-- Loaded on demand by operator-troubleshooting.md.
+<!-- Loaded directly from SKILL.md for destination authorization failures.
      Run the workflow in order. Read-only. Do not create Role or RoleBinding objects. -->
 
 # Destination namespace RBAC
 
 The OpenShift GitOps operator creates the Kubernetes permission that lets an Argo CD
 instance manage a destination namespace. The permission is a Role and a RoleBinding in
-that namespace. Creating them by hand is the wrong fix: the operator will not adopt a
-hand-written object, and a later reconcile or instance deletion removes only the
-objects it owns.
+that namespace. Configure the operator's grant inputs instead of creating parallel
+Roles or RoleBindings. Hand-written bindings bypass that lifecycle; the operator may
+overwrite objects at its generated names or leave differently named bindings behind.
+
+## Distinguish the permission layers
+
+`managed-by` grants destination workload access; `managed-by-cluster-argocd` is an
+operator-generated source-watch label, not this grant. AppProject policy is separate
+from Kubernetes RBAC. If the evidence instead concerns ignored Application objects or
+source-namespace rejection, read `operator-apps-in-any-namespace.md`.
 
 ## Objects the operator creates
 
@@ -22,12 +29,13 @@ The controller binding is what a sync uses. The server binding is what the UI, A
 and CLI use to read and manage resources in that namespace. Check both. A sync can
 fail while the UI still looks healthy, and the reverse.
 
-The two Roles are not the same, and neither matches the `admin` ClusterRole. The
-controller Role is every verb on every resource in every API group, plus
-`impersonate` on `serviceaccounts` — broader than `admin`, which cannot write
-`resourcequotas` and cannot impersonate. The server Role is narrower: `get`, `patch`,
-and `delete` on everything, full CRUD on `secrets` and `configmaps`, and the
-`argoproj.io` kinds. Neither covers cluster-scoped kinds; a Role cannot grant them.
+The two Roles differ. Their rules depend on the distribution, operator version and
+custom-role configuration. OpenShift GitOps builds the controller Role from the
+cluster's `admin` rules plus product rules; do not assume the upstream wildcard Role
+or claim universal ServiceAccount impersonation. Inspect the generated Role and its
+binding's `roleRef` before describing the grant. The server has separate rules.
+A namespaced RoleBinding grants no cluster-scoped permissions, even when it refers
+to a ClusterRole.
 
 If the operator environment sets `CONTROLLER_CLUSTER_ROLE` or `SERVER_CLUSTER_ROLE`
 (read them from the operator Deployment, step 1), the operator does **not** create
@@ -42,23 +50,21 @@ The cluster secret is `<argocd-name>-default-cluster-config`, and it lives in th
 **instance** namespace, not the destination. `NamespaceManagement` adds the
 destination namespace to its `namespaces` key, a comma-joined list:
 
-```bash
-$KCTL get secret "${CR}-default-cluster-config" -n "$NS" \
-  -o jsonpath='{.data.namespaces}' | base64 -d; echo
-```
-
-A read-only run may not hold secret access — a cluster-wide reader role commonly
-excludes `secrets`. Distinguish the two failures, because they mean opposite things:
-`forbidden` is a gap in **your** permissions and leaves the handshake unverified, while
-`NotFound` is evidence about the cluster. Check which you got:
+Only inspect that key for a namespace-scoped instance when the handshake needs
+confirmation. Preserve read errors before decoding:
 
 ```bash
-$KCTL get secret "${CR}-default-cluster-config" -n "$NS" -o name 2>&1
+if NS_DATA=$($KCTL get secret "${CR}-default-cluster-config" -n "$NS" -o jsonpath='{.data.namespaces}'); then
+  printf '%s' "$NS_DATA" | base64 -d
+  printf '\n'
+else
+  printf '%s\n' 'Namespace secret read failed; retain the error and use accessible grant evidence.' >&2
+fi
 ```
 
-If it is `forbidden`, say that this check was unavailable and fall back to the Role and
-RoleBinding in the destination namespace, which are readable and prove the same
-handshake. Do not report an unverified handshake as a missing one.
+Forbidden leaves this check unverified; NotFound is different evidence. Do not repeat
+the read merely to obtain its name or retry an unchanged denial. Accessible RBAC can
+also come from a label, so it alone does not prove a NamespaceManagement handshake.
 
 Do not read `<argocd-name>-cluster` for this. That is the admin password secret and
 never has a `namespaces` key; finding none there says nothing about the handshake.
@@ -67,63 +73,51 @@ The operator does not create `-default-cluster-config` at all for a cluster-scop
 instance, so its absence alongside the default `openshift-gitops` instance is
 expected and is not a finding.
 
-Cluster-scoped instances are a different object, and the label is not how they get
-their rights. The operator creates:
+Cluster-scoped instances also receive the following cluster-level objects:
 
 | Name | Kind |
 |------|------|
 | `<argocd-name>-<instance-namespace>-argocd-application-controller` | ClusterRole and ClusterRoleBinding |
 | `<argocd-name>-<instance-namespace>-argocd-server` | ClusterRole and ClusterRoleBinding |
 
-The default instance in `openshift-gitops` is cluster-scoped. It can read broadly and
-deploy only a limited set of kinds. Do not send an application team to add
-`managed-by` on the default instance. Application delivery belongs on a separate
-namespace-scoped instance.
+Cluster scope does not imply unrestricted workload writes. The default
+`openshift-gitops` instance can read broadly while its ClusterRole allows writes to
+only selected kinds. A same-cluster destination namespace can still receive the
+operator's `managed-by` grant. Inspect both the cluster and namespace permissions;
+do not stop this workflow just because a ClusterRole exists. A separate tenant
+instance may be an isolation choice, but is not a prerequisite for this grant.
 
 ## Workflow
 
-Set these from the live objects before judging anything. `$NS` is the namespace of
-the Argo CD instance. `$CR` is the ArgoCD CR name. They are often both
-`openshift-gitops`, which hides the fact that the label value is the namespace.
+Reuse the identified instance and Application snapshot. If absent, read the
+Application's destination/project and operation error together:
 
 ```bash
-APP=<application-name>
-APP_NS=<namespace-of-the-application-object>
-
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='project={.spec.project}{"\n"}server={.spec.destination.server}{"\n"}dest={.spec.destination.namespace}{"\n"}'
-DEST=$($KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath='{.spec.destination.namespace}')
-
-$KCTL get argocd -A
+$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
+'project={.spec.project} destination={.spec.destination}{"\n"}'\
+'phase={.status.operationState.phase} message={.status.operationState.message}{"\n"}'\
+'{range .status.operationState.syncResult.resources[*]}{.kind}/{.namespace}/{.name} {.status}: {.message}{"\n"}{end}'
 ```
 
-Every command below interpolates `$NS` and `$CR`. Set them from that listing before
-going on; unset, the commands silently query names like `--argocd-server`.
+Set `DEST`, `PROJECT`, `NS` and `CR` from that evidence and verified ownership, not
+from the first CR in a listing. `APP_NS` may differ from `NS` under Apps in Any
+Namespace. For unresolved ownership use Workflow 1 in `debug-workflows.md`; for a
+missing Application use `resource-lookup.md`. Keep candidate instances separate and
+initialize every variable needed in each fresh shell. Do not repeat discovery after
+ownership is established.
 
-```bash
-NS=<namespace-of-the-argocd-cr>     # usually $APP_NS
-CR=$($KCTL get argocd -n "$NS" -o jsonpath='{.items[0].metadata.name}')
-echo "NS=$NS CR=$CR DEST=$DEST"
-```
+### 1. What is the instance scope and effective permission?
 
-The `[0]` picks arbitrarily. If `$KCTL get argocd -n "$NS"` returned more than one
-CR, run the workflow once per CR rather than accepting that pick.
-
-If the Application is not in `$APP_NS`, search with
-`$KCTL get applications.argoproj.io -A`. Then identify which instance owns it: the
-Application's namespace is the usual instance namespace. When several `ArgoCD` CRs
-exist, report each candidate. Do not collapse them into one finding.
-
-### 1. Is this instance namespace-scoped?
-
-Read the environment from the operator **Deployment**, not the Subscription. The
+Read the environment from the owning operator **Deployment**, not only the Subscription.
+Set `OP_NS`/`OP_DEPLOYMENT` from observed operator ownership (commonly
+`openshift-gitops-operator`); resolve referenced configuration if a value uses valueFrom. The
 defaults ship in the CSV, and `Subscription.spec.config.env` exists only where an
 admin added one. On a default install it is absent, so a Subscription-only read
 returns nothing and is not evidence that the variables are unset.
 
 ```bash
-$KCTL get deploy -n openshift-gitops-operator \
-  -o jsonpath='{range .items[*].spec.template.spec.containers[?(@.name=="manager")].env[*]}{.name}={.value}{"\n"}{end}'
+$KCTL get deploy "$OP_DEPLOYMENT" -n "$OP_NS" \
+  -o jsonpath='{range .spec.template.spec.containers[?(@.name=="manager")]}{range .env[?(@.name=="ARGOCD_CLUSTER_CONFIG_NAMESPACES")]}{.name}={.value} from={.valueFrom}{"\n"}{end}{range .env[?(@.name=="ALLOW_NAMESPACE_MANAGEMENT_IN_NAMESPACE_SCOPED_INSTANCES")]}{.name}={.value} from={.valueFrom}{"\n"}{end}{range .env[?(@.name=="CONTROLLER_CLUSTER_ROLE")]}{.name}={.value} from={.valueFrom}{"\n"}{end}{range .env[?(@.name=="SERVER_CLUSTER_ROLE")]}{.name}={.value} from={.valueFrom}{"\n"}{end}{end}'
 ```
 
 A Subscription entry **replaces** the CSV default rather than adding to it. An admin
@@ -155,49 +149,43 @@ $KCTL get clusterrolebinding "${CR}-${NS}-argocd-application-controller" \
   "${CR}-${NS}-argocd-server"
 ```
 
-Those ClusterRoles existing means this instance is cluster-scoped. Stop using the
-label as the explanation. Inspect that ClusterRole against the kind that failed, and
-say the default instance is the wrong place for application delivery when `$NS` is
-`openshift-gitops`.
-
-A namespace-scoped instance with no ClusterRole is the case the rest of this
-workflow is for.
+Correlate those objects with the Deployment environment, binding subjects and actual
+rules. Their presence does not prove permission for the verb/kind/namespace in the
+error. Continue with destination grants for either scope. Missing or unreadable
+cluster RBAC is not evidence that a namespace grant is unnecessary.
 
 ### 2. Where is the Application trying to deploy?
 
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{.status.operationState.phase}{" "}{.status.operationState.message}{"\n"}'
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.operationState.syncResult.resources[*]}{.kind}/{.namespace}/{.name} {.status} {.message}{"\n"}{end}'
-```
+Reuse the destination and operation results above; identify the exact controller
+identity, denied verb, resource kind and namespace.
 
-Note the kind. If it is cluster-scoped (Namespace, CustomResourceDefinition,
-ClusterRole, ClusterRoleBinding, StorageClass, and the like), a namespace-scoped
-instance cannot manage it. The label will not change that. Say so and stop
-recommending RBAC in the destination namespace.
+Note the verb and kind. If it is cluster-scoped (Namespace, CustomResourceDefinition,
+ClusterRole, ClusterRoleBinding, StorageClass), a destination namespace grant cannot
+authorize it. Check the instance's cluster-level permissions instead; do not propose
+a namespace label as the fix.
 
-If `spec.destination.server` is not `https://kubernetes.default.svc`, the target is
-another cluster. The `managed-by` label on this cluster does nothing there. Say that
-the Role and RoleBinding have to be created on the remote cluster, and do not
-recommend labeling the local namespace.
+Resolve `spec.destination.name` through the registered cluster when used. Establish
+whether the destination server is this cluster; a non-default URL needs verification
+rather than assuming it is remote. For a confirmed remote cluster, the local `managed-by` label does nothing there.
+Inspect the registered remote identity and authoritative remote-cluster permissions;
+do not recommend labeling the local namespace.
 
-If `DEST` equals `$NS`, the instance already has rights in its own namespace. A
-forbidden error there is not a missing managed-namespace grant. Check the AppProject
-and `auth can-i` in step 6.
+If `DEST` equals `$NS`, inspect the instance's own reconciled permissions and
+AppProject rather than assuming a missing cross-namespace grant. Custom rules can
+still deny the operation; verify the exact identity/verb/kind.
 
 ### 3. Label path
 
 ```bash
 $KCTL get ns "$DEST" -o go-template='managed-by={{with .metadata.labels}}{{index . "argocd.argoproj.io/managed-by"}}{{end}}{{"\n"}}source={{with .metadata.labels}}{{index . "argocd.argoproj.io/managed-by-cluster-argocd"}}{{end}}{{"\n"}}deleting={{.metadata.deletionTimestamp}}{{"\n"}}'
-$KCTL get argocd -n "$NS" --no-headers
+# Reuse the known instance inventory; the label selects a namespace, not one CR.
 ```
 
 Judge the label against these rules:
 
 - The value must equal `$NS`. When the CR name and the namespace differ, a value
   equal to the CR name is wrong.
-- Empty or absent, on a namespace-scoped instance whose destination is another
+- Empty or absent, for an instance lacking workload permission in another
   namespace, means this path was not used. Go to step 4 before calling it missing.
 - A value equal to some other namespace means a different instance owns the
   namespace. Do not recommend changing it to `$NS`. Say which instance holds it.
@@ -247,7 +235,6 @@ spec:
 ```
 
 ```bash
-$KCTL get namespacemanagements.argoproj.io -n "$DEST" -o yaml
 $KCTL get argocd "$CR" -n "$NS" -o jsonpath='{.spec.namespaceManagement}{"\n"}'
 
 $KCTL get namespacemanagements.argoproj.io -n "$DEST" \
@@ -259,16 +246,16 @@ matches an instance namespace, and only while the feature is enabled. Read it as
 
 | `status.conditions` | What it means |
 |---------------------|----------------|
-| Absent | The operator never evaluated this CR. Either `ALLOW_NAMESPACE_MANAGEMENT_IN_NAMESPACE_SCOPED_INSTANCES` is not `"true"`, or `spec.managedBy` names a namespace with no Argo CD instance, or the `ArgoCD` CR is not reconciling at all. Check the Deployment environment from step 1 first. |
+| Absent | Evaluation is unverified. Check freshness and whether `ALLOW_NAMESPACE_MANAGEMENT_IN_NAMESPACE_SCOPED_INSTANCES` is not `"true"`, or `spec.managedBy` names a namespace with no Argo CD instance, or the `ArgoCD` CR is not reconciling at all. Check the Deployment environment from step 1 first. |
 | `reason: ErrorOccurred`, message `Namespace <ns> is not permitted for management by ArgoCD instance <ns> based on NamespaceManagement rules` | The feature is on and the request reached the operator. `ArgoCD.spec.namespaceManagement` has no entry matching this namespace with `allowManagedBy: true`. The fix is on the `ArgoCD` CR, not the tenant CR. |
-| `reason: Success` | The handshake is complete. A missing Role is then an operator problem (step 7), not a missing opt-in. |
+| `reason: Success` | The operator reported success. Correlate with current inputs, feature enablement and generated bindings/rules; stale success or a custom ClusterRole path does not prove a missing default Role is an outage. |
 
-Because the condition is only written while the feature environment is `"true"`, its
-absence is itself evidence about that variable. Quote the condition, or quote that
-there is none.
+Quote the condition and its freshness, or its absence. Read the effective environment
+instead of inferring enablement solely from absent or historical conditions.
 
 On create, the operator writes the Role and RoleBinding from the table above and
-adds `DEST` to secret `$CR-default-cluster-config` in `$NS`. On a change of `.spec.managedBy`, it
+adds `DEST` to secret `$CR-default-cluster-config` in `$NS` for namespace-scoped
+instances; cluster-scoped instances do not use that secret. On a change of `.spec.managedBy`, it
 moves that RBAC. On delete, it removes the RBAC and the cluster-secret entry.
 Disabling the Subscription env cleans all of it up. A grant that vanished after an
 operator change is often this env flipping back to unset, not a deleted Application.
@@ -280,25 +267,23 @@ Each `ArgoCD.spec.namespaceManagement` entry requires both `name` and
 ### 5. Did the operator actually create the RBAC?
 
 ```bash
-$KCTL get role -n "$DEST" \
-  "${CR}-argocd-application-controller" \
-  "${CR}-argocd-server"
-$KCTL get rolebinding -n "$DEST" \
-  "${CR}-argocd-application-controller" \
-  "${CR}-argocd-server"
-
-$KCTL get rolebinding "${CR}-argocd-application-controller" -n "$DEST" \
-  -o jsonpath='roleRef={.roleRef.kind}/{.roleRef.name}{"\n"}subject={.subjects[0].kind}/{.subjects[0].namespace}/{.subjects[0].name}{"\n"}'
+$KCTL get rolebinding "${CR}-argocd-application-controller" "${CR}-argocd-server" -n "$DEST" \
+  -o jsonpath='{range .items[*]}{.metadata.name} roleRef={.roleRef.kind}/{.roleRef.name} subjects={.subjects}{"\n"}{end}'
 ```
+
+Read the referenced Role or custom ClusterRole's `.rules` only when not already
+captured. Check both subjects and effective permissions for the denied verb/kind;
+object existence alone is insufficient. Do not request default Roles when configured
+ClusterRole bindings intentionally replace them.
 
 Read the result as follows:
 
 | What you see | What it means |
 |--------------|----------------|
-| Both Roles and both RoleBindings exist, subjects point at `$NS` | The grant is in place. A forbidden sync is not a missing managed-namespace. Continue to step 6. |
+| Both Roles and both RoleBindings exist, subjects point at `$NS` | The grant objects exist. Verify their rules for the denied action, then check the project. |
 | RoleBindings exist, Roles do not, and `CONTROLLER_CLUSTER_ROLE` or `SERVER_CLUSTER_ROLE` is set | Expected shape. Check that the named ClusterRole exists and can `get`/`list`/`watch`. |
-| Label or a completed handshake is present, and these objects are absent | The operator has not reconciled. Check operator health in step 7. Do not create the Role. |
-| A RoleBinding with a different name exists | Someone created RBAC by hand. It is not the operator grant. Do not extend it. Recommend the label or `NamespaceManagement`, and say the hand-written object will be left behind. |
+| Label or a completed handshake is present, and these objects are absent | Reconciliation is a candidate after scope, current inputs and expected object shape are verified. Check operator health in step 7. Do not create the Role. |
+| A RoleBinding with a different name exists | Inspect its owner and rules; the name alone does not establish who created it. Do not extend unrelated RBAC or replace operator-owned inputs with a manual grant. |
 | Label value is wrong or points at another instance | Fixing names here will not help. The label decides which instance reconciles. |
 
 Also confirm the ServiceAccount exists before trusting `auth can-i`:
@@ -310,31 +295,35 @@ $KCTL auth can-i create deployment \
   -n "$DEST"
 ```
 
-Use the kind from the sync error in place of `deployment`. `no` with the SA present
+Use the exact verb and kind from the error instead of `create deployment`. A forbidden
+impersonation/SelfSubjectAccessReview request is a diagnostic evidence gap, not a
+controller permission result. `no` with the SA present
 and the RoleBinding present means the rules do not allow that kind. `no` with the SA
 absent means the account name is wrong or the instance is not installed. Say which
 one you observed.
 
-### 6. AppProject, only after the grant is known
+### 6. Independent AppProject restrictions
 
 Kubernetes RBAC and the AppProject both have to allow the destination. Check the
 project even when the Role is missing, so the report does not hide a second cause.
 
 ```bash
-PROJECT=$($KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath='{.spec.project}')
+# PROJECT comes from the current Application snapshot.
 $KCTL get appprojects.argoproj.io "$PROJECT" -n "$NS" \
-  -o jsonpath='{.spec.destinations}{"\n"}{.spec.namespaceResourceBlacklist}{"\n"}{.spec.clusterResourceWhitelist}{"\n"}'
+  -o jsonpath='destinations={.spec.destinations}{"\n"}namespaceAllow={.spec.namespaceResourceWhitelist} namespaceDeny={.spec.namespaceResourceBlacklist}{"\n"}clusterAllow={.spec.clusterResourceWhitelist} clusterDeny={.spec.clusterResourceBlacklist}{"\n"}'
 ```
 
-The `default` project allows every destination. A team project that omits `DEST`, or
-a blacklist that names the failing kind, rejects the sync with a message that looks
-like RBAC. Quote the project field. Recommend a project change only when that field
+The initial `default` project is permissive, but administrators can restrict it. Read
+its actual policy just as for a team project. A missing allowed destination or a
+resource allow/deny restriction can reject the sync independently of Kubernetes RBAC. Quote the project field. Recommend a project change only when that field
 is what excludes the destination. Do not recommend the `default` project as the fix.
 
 ### 7. Operator health, when the spec is right and the objects are absent
 
-A correct label with no Role means the operator is not reconciling. Check that
-before telling anyone to re-apply the label.
+First establish which grant objects should exist. A custom ClusterRole path has no
+default namespace Role by design. Only missing expected bindings/rules after valid
+current inputs justify investigating reconciliation; reapplying a correct label is
+not evidence-based remediation.
 
 ```bash
 $KCTL get pods -n openshift-gitops-operator
@@ -343,10 +332,12 @@ $KCTL get csv -n openshift-gitops-operator \
 $KCTL get argocd "$CR" -n "$NS" -o jsonpath='phase={.status.phase}{"\n"}'
 ```
 
-A CSV that is not `Succeeded`, or an operator pod that is not `Running`, is the
-blocker. Fixing the Application will not create the Role.
+Correlate current operator readiness, relevant CSV/InstallPlan conditions and recent
+reconciliation errors with this instance. A replacing CSV or historical pod failure
+alone does not prove the blocker. Workflow 6 in `debug-workflows.md` covers that
+follow-up when the evidence points to OLM or conversion.
 
-Also re-read step 3: a terminating destination namespace is the operator behaving
+Also reuse the namespace observation from step 3: a terminating destination namespace is the operator behaving
 correctly, not a stuck reconcile.
 
 ## What to recommend
@@ -363,10 +354,11 @@ Or the `NamespaceManagement` handshake in step 4, when the tenant should not nee
 cluster-admin and the Subscription env is already true or the user is willing to
 have an admin set it.
 
-Say the impact with the recommendation. The grant is admin-equivalent for every
-namespaced resource in that namespace, for every Application on that instance, still
-limited by the AppProject. It does not extend to cluster-scoped kinds or to a remote
-cluster.
+Say the impact with the recommendation. The grant gives the instance broad access
+in that destination namespace, available to Applications on the instance subject
+separately to AppProject policy. Describe the effective Role rules or custom
+ClusterRole, not an assumed wildcard grant. It does not extend to cluster-scoped
+kinds or to a remote cluster.
 
 Do not recommend:
 
@@ -374,4 +366,14 @@ Do not recommend:
 - `managed-by-cluster-argocd` as a substitute for `managed-by`.
 - Adding the label on a namespace that already names a different instance.
 - Using this grant so a namespace-scoped instance can create Namespaces or CRDs.
-- Pointing an application team at the default `openshift-gitops` instance.
+
+## Source and version check
+
+The scope and OpenShift Role behavior above were checked against GitOps Operator
+`d99c55b3971ca4758b43efd69921164fcc88a257`: `setManagedNamespaces` in
+`argocd-operator/controllers/argocd/util.go`, reconciliation in `rolebinding.go`,
+and the Role hook in `controllers/argocd/openshift/openshift.go`.
+This is source-snapshot evidence, not a packaged-release compatibility guarantee.
+The snapshot depends on Argo CD 3.6.1; verify the installed operator release/schema
+and effective live rules before applying version-sensitive procedures to 1.21/3.4
+or another release.

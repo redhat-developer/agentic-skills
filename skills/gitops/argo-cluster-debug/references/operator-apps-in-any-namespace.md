@@ -1,4 +1,4 @@
-<!-- Loaded on demand by operator-troubleshooting.md when an Application
+<!-- Loaded directly from SKILL.md when an Application
      object outside the Argo CD namespace is ignored. Read-only. Do not create Role or
      RoleBinding objects. -->
 
@@ -34,12 +34,13 @@ scope here. If a current sync is `forbidden`, continue with `operator-rbac.md`.
 
 ## 0. Confirm the instance supports this feature
 
-Read `ARGOCD_CLUSTER_CONFIG_NAMESPACES` from the operator Deployment's effective
+Reuse established scope and instance evidence. Otherwise identify the owning operator
+Deployment (`OP_DEPLOYMENT`, `OP_NS`) and read `ARGOCD_CLUSTER_CONFIG_NAMESPACES` from its effective
 environment, not just an optional Subscription override:
 
 ```bash
-$KCTL get deploy -n openshift-gitops-operator \
-  -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{range .spec.template.spec.containers[?(@.name=="manager")].env[*]}{.name}={.value}{"\n"}{end}{end}'
+$KCTL get deploy "$OP_DEPLOYMENT" -n "$OP_NS" \
+  -o jsonpath='{range .spec.template.spec.containers[?(@.name=="manager")].env[?(@.name=="ARGOCD_CLUSTER_CONFIG_NAMESPACES")]}{.name}={.value} from={.valueFrom}{"\n"}{end}'
 $KCTL get clusterrole "${CR}-${NS}-argocd-application-controller" \
   "${CR}-${NS}-argocd-server"
 ```
@@ -101,15 +102,16 @@ The label value is the Argo CD **namespace**. Do not set this label by hand — 
 operator derives it from `sourceNamespaces` and will remove a hand-written one that
 does not correspond to a CR entry.
 
-Confirm the flag reached the workloads. The operator renders `sourceNamespaces` into
+Use the discovered workload names/kinds and resolve referenced configuration when
+needed. Confirm the flag reached the workloads. The operator renders `sourceNamespaces` into
 the controller and server arguments, and a CR that was edited but never reconciled is
 visible here:
 
 ```bash
 $KCTL get statefulset "$CR"-application-controller -n "$NS" \
-  -o jsonpath='{.spec.template.spec.containers[0].command}{"\n"}' | tr ',' '\n' | grep -i namespaces
+  -o jsonpath='{range .spec.template.spec.containers[*]}{.name} command={.command} args={.args}{"\n"}{end}'
 $KCTL get deploy "$CR"-server -n "$NS" \
-  -o jsonpath='{.spec.template.spec.containers[0].command}{"\n"}' | tr ',' '\n' | grep -i namespaces
+  -o jsonpath='{range .spec.template.spec.containers[*]}{.name} command={.command} args={.args}{"\n"}{end}'
 ```
 
 Do not edit `--application-namespaces` on the Deployment or StatefulSet. The operator
@@ -126,7 +128,7 @@ support it may have its unknown field pruned by the API server.
 ```bash
 $KCTL get argocd "$CR" -n "$NS" \
   -o jsonpath='sourceNamespaces={.spec.sourceNamespaces}{"\n"}phase={.status.phase}{"\n"}{range .status.conditions[*]}{.type}={.status} {.reason}: {.message} at={.lastTransitionTime}{"\n"}{end}'
-$KCTL logs -n openshift-gitops-operator deploy/<operator-deployment> -c manager --tail=100
+$KCTL logs -n "$OP_NS" deploy/"$OP_DEPLOYMENT" -c manager --since=15m --tail=100
 ```
 
 Use the operator Deployment name discovered in step 0. Quote any condition or log
@@ -135,7 +137,7 @@ explain it, report reconciliation as unresolved with the evidence gap. `Availabl
 phase alone does not prove this setting was applied. The bundled and upstream
 [`ArgoCDStatus`](https://github.com/argoproj-labs/argocd-operator/blob/v0.18.0/api/v1beta1/argocd_types.go#L943)
 have no top-level `status.observedGeneration`; an empty value is not a lag signal.
-Continue with Workflow 6 in `../SKILL.md` for operator pods, CSV, InstallPlan and
+Continue with Workflow 6 in `debug-workflows.md` for operator pods, CSV, InstallPlan and
 conversion-webhook evidence; retain the established scope and generated-object checks.
 
 ## 3. The AppProject must permit the namespace too
@@ -145,7 +147,7 @@ This is the second half of the feature and the most common reason a correct
 list the namespace in **its own** `sourceNamespaces`:
 
 ```bash
-PROJ=$($KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath='{.spec.project}')
+# PROJ is the project from the current Application snapshot.
 $KCTL get appproject "$PROJ" -n "$NS" -o jsonpath=''\
 'sourceNamespaces={.spec.sourceNamespaces}{"\n"}'\
 'destinations={.spec.destinations}{"\n"}'
@@ -203,3 +205,7 @@ reverted.
 Finally, inspect destination authorization separately. Fixing source watching does
 not prove the controller can create the requested workload kind; `operator-rbac.md`
 distinguishes cluster-scoped rights, namespace grants, remote targets and project policy.
+
+Version boundary: the linked operator v0.18.0 source establishes that snapshot's
+scope gate; verify the installed product/operator schema and effective settings. A
+retained CR field alone is not proof that the installed instance supports the feature.

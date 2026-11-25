@@ -1,195 +1,165 @@
-<!-- Loaded on demand by app-sync-triage.md when the sync
-     status is OutOfSync and no operation is running. Read-only. -->
-
 # OutOfSync
 
-The live state does not match the desired state. Before diagnosing why, establish
-which of three very different situations this is — they look identical at app level:
+Desired and live state differ. Reuse the current-run Application snapshot and inspect
+only missing evidence. Comparison errors belong to `sync-comparison-error.md`; a
+running operation to `sync-stuck.md`. Independent health faults keep their own branch.
 
-| Situation | Tell | Is it a fault? |
-|---|---|---|
-| Nobody has synced it | No `automated` policy, and `operationState` is empty or old | No. This is how manual-sync apps work. |
-| Auto-sync is configured and declining to run | `automated` is set, no operation running | Yes, usually |
-| Sync succeeds and the diff returns | `operationState.phase: Succeeded` with a recent `finishedAt` | Yes, and syncing again will not help |
+## 1. Effective automation and last operation
 
-## 1. Is auto-sync even configured?
+Read these together if not already known:
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
 'automated={.spec.syncPolicy.automated}{"\n"}'\
-'prune={.spec.syncPolicy.automated.prune}{"\n"}'\
-'selfHeal={.spec.syncPolicy.automated.selfHeal}{"\n"}'\
-'phase={.status.operationState.phase}{"\n"}'\
-'finishedAt={.status.operationState.finishedAt}{"\n"}'
+'phase={.status.operationState.phase} finished={.status.operationState.finishedAt}{"\n"}'\
+'comparedRevision={.status.sync.revision} comparedRevisions={.status.sync.revisions}{"\n"}'\
+'operationRevision={.status.operationState.syncResult.revision} operationRevisions={.status.operationState.syncResult.revisions}{"\n"}'\
+'operation={.status.operationState.operation.sync}{"\n"}'
 ```
 
-If `automated` is empty, the Application is manual-sync and sitting `OutOfSync` is its
-normal resting state. Close this sync branch and continue any outstanding health or
-operator checks. Do not diagnose the manual-sync policy as a fault, and do not
-recommend enabling auto-sync — that is a policy decision, frequently deliberate for
-production.
+- Absent `automated` or `automated.enabled: false`: auto-sync is disabled, even when
+  `prune`/`selfHeal` are true. An intentionally manual-sync app can remain OutOfSync.
+- `automated: {}` or omitted/null `enabled` within the object: auto-sync is enabled.
+- `Succeeded` describes that operation, not current convergence. Compare its revision
+  or ordered multi-source revisions with the current desired comparison. A new Git
+  revision, selective sync, skipped prune or changed parameters can explain the diff
+  without a competing writer. Read the resource results before attributing a rewrite.
 
-If `finishedAt` is within the last few minutes and the status is still `OutOfSync`, go
-straight to section 5. The sync is working and something is undoing it.
+If disabled automation fully explains this sync symptom, report the configured policy
+without recommending enablement. Continue independent health/operator failures and
+any specifically requested drift investigation. Do not call an empty operation history
+proof that no earlier deployment ever occurred.
 
-## 2. What is actually different?
+Source: [Argo CD 3.4 auto-sync](https://argo-cd.readthedocs.io/en/release-3.4/user-guide/auto_sync/).
 
-Narrow to the resources before reasoning about causes.
-
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.resources[*]}{.kind}/{.namespace}/{.name} {.status}{"\n"}{end}' \
-  | grep -v Synced
-```
-
-Per-resource values and what each means:
-
-| Value | Meaning |
-|---|---|
-| `OutOfSync` | Desired and live differ, or the resource does not exist live. |
-| `PruneSkipped` | Live-only resource that Argo CD declined to delete. Prune is off, or the resource is annotated `Prune=false`. |
-| `Unknown` | This resource could not be compared, even though the Application could. |
-
-Read the diff itself if you can. It is the single highest-value piece of evidence and
-removes all guesswork about which field differs. This needs the `argocd` CLI and an
-authenticated session, neither of which is guaranteed — only `oc` or `kubectl` is:
-
-```bash
-command -v argocd >/dev/null 2>&1 && argocd app diff "$APP" --app-namespace "$APP_NS" 2>&1 | head -60
-```
-
-When that is unavailable, fall back to the live object and work from the per-resource
-status above:
-
-```bash
-$KCTL get <kind> <name> -n <ns> -o yaml | head -60
-```
-
-Then say in the report that the diff could not be read directly. Every conclusion below
-is weaker without it, and a confident cause named from the resource list alone is the
-most common way this triage goes wrong.
-
-## 3. Auto-sync is set but nothing runs
-
-The controller logs its reason, and this is the fastest route to the answer:
-
-```bash
-$KCTL logs -n "$NS" sts/"$CR"-application-controller --tail=500 \
-  | grep -i -E "$APP" | grep -i -E "auto-sync|skipping|sync window|terminated"
-```
-
-| Log or condition | Cause |
-|---|---|
-| `Skipping auto-sync: failed previous sync attempt to <last-revisions> and will not retry for <desired-revisions>` | The previous operation failed for this desired revision/parameter combination. Inspect retry configuration and `Failed last sync attempt to` in conditions; follow `sync-failed.md`. The final argument is revisions, not a timeout. |
-| `Skipping auto-sync: most recent sync already to <rev>` | The previous sync **succeeded** and self-heal is disabled. Do not report this as evidence of a failed attempt. |
-| `Skipping auto-sync: sync window` | A deny window is active. Check the AppProject. |
-| `Skipping auto-sync: application is deleting` | A `deletionTimestamp` is set. |
-| Nothing at all, and the app is never refreshed | The controller is not processing this Application: wrong shard, the app is in a namespace the instance does not watch, or the controller is wedged. |
-
-Sync windows are AppProject-level and easy to forget, because nothing on the
-Application says a window exists:
-
-```bash
-PROJ=$($KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath='{.spec.project}')
-$KCTL get appproject "$PROJ" -n "$NS" -o jsonpath='{.spec.syncWindows}{"\n"}'
-```
-
-A `deny` window matching this Application blocks auto-sync for its duration. A window
-with `manualSync: false` also blocks a human sync. This is normal configured behavior,
-not a fault — report it as "working as configured" and name the window.
-
-If the controller logs nothing about the Application at all, confirm it is being
-watched. On an operator-managed instance an Application in a tenant namespace is
-ignored entirely unless the namespace is in `sourceNamespaces` — see
-`operator-troubleshooting.md`.
-
-## 4. The revision is not what you think
-
-A change pushed to git that never appears is often a revision mismatch rather than a
-sync problem.
+## 2. Identify the actual difference
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
-'target={.spec.source.targetRevision}{"\n"}'\
-'synced={.status.sync.revision}{"\n"}'\
+'{range .status.resources[?(@.status!="Synced")]}{.group}/{.kind}/{.namespace}/{.name} comparison={.status}{"\n"}{end}'\
+'{range .status.operationState.syncResult.resources[*]}{.group}/{.kind}/{.namespace}/{.name} result={.status} hookPhase={.hookPhase}: {.message}{"\n"}{end}'
+```
+
+`.status.resources[].status` holds comparison values (`Synced`, `OutOfSync`,
+`Unknown`). `PruneSkipped` belongs to `.status.operationState.syncResult.resources[]`,
+not that comparison list. Retain the operation timestamp when interpreting it.
+
+If the Argo CD CLI session is available and targets the correct instance:
+
+```bash
+argocd app diff "$APP" --app-namespace "$APP_NS"
+```
+
+Return the relevant resource/field differences; if output is limited, disclose that
+and retrieve omitted portions needed for the diagnosis. Do not treat a nonzero diff
+exit as a connection failure without inspecting the output. Do not retry an already
+known broken core-mode connection.
+
+Without a diff, compare the specific live fields against accessible **rendered desired
+state at the relevant revision**, not an arbitrary repository file. Use JSONPath or
+filtered JSON for those fields. If desired state is unavailable, report that limitation;
+a resource status list alone does not identify the differing field or its writer.
+
+## 3. Auto-sync enabled but no operation starts
+
+Inspect targeted current controller decisions only if policy/results do not already
+explain the state. Use the observed controller pod/container:
+
+```bash
+$KCTL logs "$CONTROLLER_POD" -n "$NS" -c "$CONTROLLER_CONTAINER" --since=15m --tail=200 \
+  | grep -F "$APP"
+```
+
+Correlate namespace and timestamps, not just a name substring. Expand the time window
+for an older incident; an empty filtered tail does not prove the app is unwatched.
+
+| Observed decision | Interpretation |
+|---|---|
+| `Skipping auto-sync: failed previous sync attempt to <last-revisions> and will not retry for <desired-revisions>` | Prior failure for this revision/parameter combination. Check retry policy and `sync-failed.md`; the final argument is revisions, not a timeout. |
+| `Skipping auto-sync: most recent sync already to <rev>` | Prior success with self-heal disabled; not a failed-attempt message. |
+| Sync-window block | Evaluate matching windows below; not necessarily an active deny window. |
+| Application is deleting | Correlate its deletionTimestamp and operation evidence. |
+| No relevant activity | Check freshness, controller/shard ownership and source watching only after ruling out incomplete logs and expected polling policy. |
+
+Use the project name from the snapshot:
+
+```bash
+$KCTL get appprojects.argoproj.io "$PROJECT" -n "$NS" -o jsonpath='{.spec.syncWindows}{"\n"}'
+```
+
+Evaluate application/namespace/cluster selectors, schedule, timezone and duration.
+A matching active deny window can block sync; when matching allow windows exist,
+being outside them can also block it. Manual-sync exceptions are separate; inspect
+`manualSync` and effective window evaluation rather than inferring all manual behavior
+from one window. Report intentional scheduling as working as configured.
+
+For evidence that an operator-managed instance is not watching this Application,
+read `operator-apps-in-any-namespace.md`. The destination grant is a different layer.
+
+## 4. Revision and freshness
+
+Reuse compared and operation revision(s). If source targets are unknown:
+
+```bash
+$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
+'single: repo={.spec.source.repoURL} target={.spec.source.targetRevision} path={.spec.source.path} chart={.spec.source.chart}{"\n"}'\
+'{range .spec.sources[*]}source: repo={.repoURL} target={.targetRevision} path={.path} chart={.chart} ref={.ref}{"\n"}{end}'\
 'observedAt={.status.reconciledAt}{"\n"}'
 ```
 
-- `targetRevision` pinned to a tag or SHA does exactly what it says. A moved tag is not
-  re-resolved until the cache expires.
-- `reconciledAt` far in the past means no refresh has happened. Default polling is
-  `timeout.reconciliation`, 180s. If a webhook was expected to trigger it, the webhook
-  is the thing to check.
-- The repo-server caches manifests. A push that is genuinely in the repo but not
-  visible to Argo CD appears as a stale `status.sync.revision` while the branch head
-  has moved.
+With nonempty `sources`, preserve source order and use `status.sync.revisions[]` and
+operation `syncResult.revisions[]`. A values-only source can change the desired render.
+A compared revision is not proof it was deployed. A pinned SHA/tag or chart version
+can explain why a different branch-head change is irrelevant. Caches and refresh
+policy can delay resolution of a changed branch/tag; corroborate before blaming cache.
 
-## 5. Sync succeeds and the diff comes straight back
+Read effective `timeout.reconciliation` and `timeout.reconciliation.jitter` only for a
+freshness question. In 3.4 the defaults are 120s plus up to 60s jitter; polling can be
+customized or disabled. Check expected webhook delivery and controller activity before
+calling an older `reconciledAt` a fault. Do not mutate refresh annotations in diagnosis.
+Source: [Argo CD 3.4 polling](https://argo-cd.readthedocs.io/en/release-3.4/faq/).
 
-The hardest shape, and the one where repeated syncing wastes the most time. The sync
-reports success, the comparison immediately finds a difference again, and the
-Application flaps between `Synced` and `OutOfSync`. Something other than Argo CD is
-writing the field.
+## 5. Same desired inputs, repeated field difference
 
-Four causes, in rough order of frequency:
+Enter this branch only after identifying the differing field and ruling out a new
+revision, selective operation and pruning. Possible causes:
 
-**A mutating admission webhook or another controller writes the field.** Anything that
-injects a sidecar, a label, a default resource limit, or a CA bundle. Argo CD applies
-the manifest, the webhook rewrites it, the next comparison sees the rewrite.
+- **Admission mutation or another writer.** Correlate the actual field change with
+  webhook/controller evidence. A list of webhook names alone does not prove causation.
+  If another controller legitimately owns the field, consider narrowly scoped
+  Application `spec.ignoreDifferences`; instance-wide operator
+  `.spec.resourceIgnoreDifferences` has a wider impact. Confirm the installed schema.
+  Otherwise correct the conflicting desired input/controller configuration. Do not
+  hide an unexplained difference with a blanket ignore rule.
+- **Server-side apply.** Argo CD 3.4 uses `--server-side --force-conflicts`. Another
+  entry in managedFields alone does not prove apply was rejected. Require the actual
+  operation error, or evidence of a subsequent rewrite. Read only relevant manager/path
+  information when needed; do not dump all managedFields routinely.
+- **Diff ignored but sync overwrites.** `RespectIgnoreDifferences=true` makes sync
+  honor ignored fields for existing resources. Without it, a sync can overwrite such
+  a field. That does not alone make the ignored field appear OutOfSync: identify any
+  unignored difference before claiming it explains Application status flapping.
+- **Nondeterministic render.** Compare rendered output at the same inputs for generated
+  timestamps or random values. A `helm.sh/hook` annotation alone proves no randomness.
 
-```bash
-$KCTL get mutatingwebhookconfigurations -o jsonpath='{range .items[*]}{.metadata.name}{"\n"}{end}'
-```
+Project `spec.ignoreDifferences` and `spec.syncPolicy.syncOptions` together only when
+this branch needs them. See [3.4 sync options](https://argo-cd.readthedocs.io/en/release-3.4/user-guide/sync-options/).
 
-The fix is `ignoreDifferences` for the specific path, never a sync loop. On an
-operator-managed instance that is `.spec.resourceIgnoreDifferences` on the `ArgoCD` CR,
-because an `argocd-cm` edit will be reverted.
+## 6. Pruning
 
-**A server-side-apply field ownership conflict.** With `ServerSideApply=true`, another
-field manager owning a field Argo CD also sets produces a conflict that leaves the
-field unchanged. Check who owns it:
+Inspect the actual operation's `PruneSkipped` message and prune option. Automated
+pruning defaults off; resource `argocd.argoproj.io/sync-options: Prune=false` can also
+retain a resource. `IgnoreExtraneous` suppresses an extraneous resource's contribution
+to aggregate sync status; it does **not** prevent deletion or explain `PruneSkipped`.
+Source: [compare options](https://argo-cd.readthedocs.io/en/release-3.4/user-guide/compare-options/).
 
-```bash
-$KCTL get <kind> <name> -n <ns> -o jsonpath='{range .metadata.managedFields[*]}{.manager} {.operation}{"\n"}{end}'
-```
-
-**`ignoreDifferences` is honored by the diff but not by the sync.** The resource stops
-showing as `OutOfSync` in the UI but sync still overwrites the field, so the other
-controller rewrites it. `RespectIgnoreDifferences=true` in `syncOptions` is what makes
-sync honor them too. Its absence is the classic cause of a flapping Application that
-looks correctly configured.
-
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
-'syncOptions={.spec.syncPolicy.syncOptions}{"\n"}'\
-'ignoreDifferences={.spec.ignoreDifferences}{"\n"}'
-```
-
-**A generated field.** A manifest containing a timestamp, a random suffix, or a
-`helm.sh/hook` object that changes every render is `OutOfSync` by construction. Every
-comparison produces a genuine difference and no sync can converge.
-
-## 6. Prune and PruneSkipped
-
-`PruneSkipped` is not a failure. It means a resource exists live, is no longer in git,
-and Argo CD was told not to delete it:
-
-- `spec.syncPolicy.automated.prune` is `false`, the default. Auto-sync never deletes
-  unless this is explicitly enabled.
-- The resource is annotated `argocd.argoproj.io/sync-options: Prune=false`.
-- The resource is annotated `argocd.argoproj.io/compare-options: IgnoreExtraneous`,
-  which excludes it from the diff entirely.
-
-Report which of the three applies. Recommending `prune: true` is a destructive change
-with a blast radius beyond this Application — state that it deletes every live resource
-no longer in git, and leave the decision to a human.
+Report deliberate retention as policy. Recommending pruning requires an inventory of
+affected tracked live-only resources and dependents; it can delete workloads/data.
+Do not enable it or run a sync as diagnosis.
 
 ## 7. Report
 
-Name which section produced the answer, and state plainly whether the `OutOfSync` is a
-fault at all. A manual-sync Application, a closed sync window, and a deliberately
-unpruned resource are all expected states, and reporting them as problems trains people
-to ignore the diagnosis.
-
-If the cause is section 5, say so explicitly and say that syncing again will not resolve
-it. That one sentence is usually the most useful output of the whole triage.
+State the evidenced cause, whether it is a fault, and what remains unverified. Manual
+sync, closed windows and intentional retention can require no repair. A demonstrated
+competing writer needs its owning configuration corrected; another sync alone will
+not remove that cause. Keep independent health/operator findings in the final report.

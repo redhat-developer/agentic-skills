@@ -3,9 +3,11 @@
 
 # A sync that will not finish
 
-Phase `Running` with no end in sight. Argo CD is waiting for something, and a sync
-operation waits indefinitely by default — there is no overall timeout unless
-`spec.syncPolicy.retry` or a `--timeout` was set on a manual sync.
+Phase `Running` with no end in sight. Argo CD is waiting for something. Check the
+installed version's effective sync timeout: in 3.4,
+`controller.sync.timeout.seconds` defaults to `0` (disabled). Retry policy controls
+retries after failure; it is not a deadline for a still-running operation. A client
+wait timeout is not evidence that the controller terminated the operation.
 
 First, confirm it is actually stuck rather than slow.
 
@@ -24,17 +26,20 @@ in each wave. Under a few minutes with waves in play is not stuck.
 ## 1. Find the wave or hook it is waiting on
 
 A sync runs in phases — `PreSync`, `Sync`, `PostSync` — and within each phase in wave
-order. Argo CD applies a wave, waits for every resource in it to become **healthy**,
-then moves on. One resource that never becomes healthy stops the operation there
-forever.
+order. The gate depends on sync completion, hook phase and health assessments for
+resources that have them. An assessed resource that never becomes healthy can block
+advancement until a configured timeout or termination; a kind without a health check
+is not inherently a blocker.
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
   -o jsonpath='{range .status.operationState.syncResult.resources[*]}{.hookPhase} {.status} {.kind}/{.name} {.message}{"\n"}{end}'
 ```
 
-The resource with an empty or `Running` status, where the ones before it are
-`Synced` or `Succeeded`, is the blocker. Then find its wave:
+Keep result `.status` (such as `Synced`/`SyncFailed`) separate from `.hookPhase`
+(`Running`/`Succeeded`/`Failed`). Empty status is not proof of blocking. Correlate
+operation message, hook phase and resource-health evidence to identify the blocked
+wave, then read its annotation:
 
 ```bash
 $KCTL get <kind> <name> -n <ns> \
@@ -45,7 +50,8 @@ This is the critical point: **the wave gate is health, not existence.** A Deploy
 that is applied successfully but whose pods never become ready blocks the wave
 indefinitely, and the sync looks stuck while the apply itself worked perfectly. When
 the blocker is a workload, the real question is why it is unhealthy —
-`app-health-triage.md` owns that, and it is usually the faster path.
+use the matching health leaf in `../SKILL.md`, or `app-health-triage.md` when the
+assessment is unresolved. Reuse the health snapshot.
 
 ## 2. Hooks
 
@@ -54,35 +60,36 @@ do not show up in Application health at all — hooks are excluded from the heal
 rollup, so the only evidence is here.
 
 ```bash
-$KCTL get jobs -n <ns> -o jsonpath='{range .items[*]}{.metadata.name} active={.status.active} succeeded={.status.succeeded} failed={.status.failed}{"\n"}{end}'
-$KCTL get pods -n <ns> --sort-by=.metadata.creationTimestamp | tail -20
+$KCTL get job <hook-job> -n <ns> -o jsonpath='uid={.metadata.uid} active={.status.active} succeeded={.status.succeeded} failed={.status.failed}{"\n"}conditions={.status.conditions}{"\n"}'
+$KCTL get pods -n <ns> -l batch.kubernetes.io/controller-uid=<job-uid>
 ```
 
 | Shape | Cause |
 |---|---|
 | Job exists, pod `Pending` | Unschedulable, missing PVC, missing image pull secret. Read the pod events. |
 | Job exists, pod running forever | The hook command does not terminate. A migration waiting on a lock is the classic case. |
-| Job absent entirely | The hook could not be created. Read `operationState.message` — usually RBAC or a quota. |
-| Job from a previous run still present | `hook-delete-policy` is unset, so the old Job was never cleaned up and the new one collides on name. |
+| Job absent entirely | Check operation results and hook deletion policy: creation failure, successful cleanup and hook replacement differ. Absence alone does not establish failed creation. |
+| Job from a previous run still present | Inspect its hook deletion policy, deletion timestamp, finalizers and controller errors. An unset policy defaults to `BeforeHookCreation`; absence of the annotation alone does not explain a name collision. |
 
-A hook Job with a `backoffLimit` that keeps retrying holds the sync for
-`backoffLimit × pod runtime`, which can be very long without ever reporting failure.
+A retrying hook Job can hold the operation while backoff/runtime accumulate. Inspect
+its conditions, retry/backoff limits and any active deadline; there is no fixed
+`backoffLimit × pod runtime` deadline.
 
 ## 3. Resources that can never become healthy
 
-Some resources never reach `Healthy` by design, and putting one in an early wave wedges
-every sync permanently:
+These can block an early wave when the operation actually waits on their assessment:
 
-- A `Job` that is meant to run forever, or a `CronJob`'s spawned Job.
+- A tracked or hook `Job` meant to run forever. A CronJob's descendant Job is not
+  automatically a resource in the Application's sync wave.
 - A PVC in `Pending` because no volume can be bound — `WaitForFirstConsumer` with no
   consumer in that wave is a self-deadlock.
 - A `Service` of type `LoadBalancer` with no controller to assign an address.
-- A custom resource whose operator is not installed, so nothing ever updates its
-  status.
+- A custom resource whose configured health assessment waits for operator-populated
+  status. Without an assessment, the resource is skipped rather than gating on health.
 
 ```bash
-$KCTL get pvc -n <ns>
-$KCTL get events -n <ns> --sort-by=.lastTimestamp | tail -30
+$KCTL get pvc <claim> -n <ns>
+$KCTL get events -n <ns> --field-selector involvedObject.uid=<blocked-resource-uid> --sort-by=.lastTimestamp | tail -30
 ```
 
 The tell is that the resource is applied, unchanged, and quiet — no errors anywhere,
@@ -98,9 +105,9 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
   -o jsonpath='{.status.operationState.message}{"\n"}'
 ```
 
-A sync stuck `Terminating` together with a `deletionTimestamp` on the Application is
-the Argo CD finalizer waiting for cascade deletion of children — almost always a child
-resource with its own finalizer that nothing will clear:
+If the Application also has a deletionTimestamp, investigate cascade deletion
+separately from sync termination. Verify its resource finalizer, remaining children
+and controller errors before attributing the wait to a child finalizer:
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
@@ -116,17 +123,17 @@ understands what will be left behind.
 A sync can also appear stuck because nothing is driving it.
 
 ```bash
-$KCTL get pods -n "$NS" -l app.kubernetes.io/name="$CR"-application-controller
-$KCTL logs -n "$NS" sts/"$CR"-application-controller --tail=200 | grep -i -E "$APP|panic|OOM|leader"
+$KCTL get pods -n "$NS" -l "$CONTROLLER_SELECTOR"
+$KCTL logs "$CONTROLLER_POD" -n "$NS" -c "$CONTROLLER_CONTAINER" --since=15m --tail=200 | grep -i -E "$APP|panic|OOM|leader"
 ```
 
-If the controller restarted mid-sync, the operation is left in `Running` with a
-`startedAt` that predates the restart. Compare the two timestamps — a `startedAt`
-earlier than the controller pod's start time is conclusive, and the diagnosis is the
-controller, not this Application.
+If `startedAt` predates the controller pod's start time, a restart overlapped the
+operation. That timing alone does not establish a stalled controller: reconciliation
+may have resumed. Correlate current logs, resource progress and repeated status
+observations before attributing the blocker to the controller.
 
-When the controller is OOMKilled or restarting repeatedly, every Application it manages
-is affected and per-Application triage is a distraction.
+Correlate current OOM/restart failures with the affected controller shard and
+Applications. Report that scope while preserving independently observed faults.
 `../../argo-performance-tuning/SKILL.md` covers controller sizing and sharding.
 
 ## 6. Report
@@ -137,5 +144,8 @@ waiting on Job `db-migrate`, whose pod has been `Pending` for 40 minutes with
 `FailedScheduling: insufficient memory`" is.
 
 State whether the blocker is the sync machinery or an unhealthy workload. If it is a
-workload, say that the sync is behaving correctly and hand off to
-`app-health-triage.md`.
+workload, explain the verified gate and continue the relevant health leaf; use
+`app-health-triage.md` only when status selection is unresolved.
+
+Sources: [Argo CD 3.4 controller parameters](https://github.com/argoproj/argo-cd/blob/release-3.4/docs/operator-manual/argocd-cmd-params-cm.yaml)
+and [hook lifecycle](https://argo-cd.readthedocs.io/en/release-3.4/user-guide/sync-waves/#hook-lifecycle-and-cleanup).

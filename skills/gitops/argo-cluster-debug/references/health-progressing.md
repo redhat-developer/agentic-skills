@@ -40,7 +40,7 @@ The message is diagnostic on its own. Match it before running anything else.
 |---|---|
 | `Pending deletion` | The object has a `deletionTimestamp`. Go to section 2 — this is the most common sustained case and has nothing to do with the rollout. |
 | `Waiting for rollout to finish: N out of M new replicas have been updated...` | New pods have not been created yet |
-| `Waiting for rollout to finish: N old replicas are pending termination...` | Old pods are not going away — look for PDBs, finalizers, long `terminationGracePeriodSeconds` |
+| `Waiting for rollout to finish: N old replicas are pending termination...` | Old pods are not going away — inspect rollout constraints, deletion timestamps, finalizers and termination grace periods |
 | `Waiting for rollout to finish: N of M updated replicas are available...` | Pods exist but are not ready — readiness probes, section 3 |
 | `observed deployment generation less than desired generation` | The Deployment controller has not acted on the spec at all. Section 4. |
 
@@ -55,9 +55,9 @@ $KCTL get <kind> <name> -n <ns> \
   -o jsonpath='deletionTimestamp={.metadata.deletionTimestamp}{"\n"}finalizers={.metadata.finalizers}{"\n"}'
 ```
 
-If finalizers are present, the owning controller is not removing them. Identify which
-controller owns the finalizer and whether it is running. This is not an Argo CD fault
-and re-syncing will not clear it.
+Finalizers can reflect normal cleanup. Correlate deletion age, remaining dependencies
+and the owning controller's activity before calling one stuck. Do not strip finalizers
+or assume another sync clears the blocker.
 
 A namespace stuck `Terminating` produces the same shape across every resource in it,
 and is worth checking once before diagnosing resources individually:
@@ -68,33 +68,41 @@ $KCTL get ns <ns> -o jsonpath='phase={.status.phase}{"\n"}finalizers={.spec.fina
 
 ## 3. Pods that will not become ready
 
-`Pending` pods are `Progressing`, not `Degraded` — so unschedulable pods, pods blocked
-on an unbound PVC, and pods blocked by quota all land here.
+`Pending` pods without a qualifying container waiting error are `Progressing`;
+inspect scheduling/storage constraints and FailedCreate quota events. A waiting
+error with restartPolicy Always can instead produce Degraded (`health-degraded.md`).
 
 ```bash
 $KCTL get pods -n <ns> -l <selector> \
   -o jsonpath='{range .items[*]}{.metadata.name} {.status.phase} ready={.status.containerStatuses[*].ready} {range .status.conditions[?(@.type=="PodScheduled")]}{.reason}: {.message}{end}{"\n"}{end}'
-$KCTL get events -n <ns> --sort-by=.lastTimestamp | tail -25
+$KCTL get events -n <ns> --field-selector involvedObject.uid=<pod-or-replicaset-uid> --sort-by=.lastTimestamp | tail -25
 ```
 
 | What you find | Cause |
 |---|---|
 | `PodScheduled=False`, reason `Unschedulable` | No node fits — resource requests, taints, node selector, affinity. The event message names which |
-| Pending with an unbound PVC | Check the PVC; `WaitForFirstConsumer` with an unschedulable pod is a deadlock both sides of |
+| Pending with an unbound PVC | Check the PVC; `WaitForFirstConsumer` deliberately waits for scheduling; inspect the actual scheduling/storage constraint before calling it a deadlock |
 | Pending, `exceeded quota` event | ResourceQuota in the namespace |
 | Running, `ready=false`, no restarts | Readiness probe failing or still in `initialDelaySeconds` |
-| Running, `ready=false`, with restarts | This is a crash loop — it belongs in `health-degraded.md`, and the app status should be `Degraded` unless something worse is masking it |
+| Running, `ready=false`, with restarts | Inspect previous logs using `health-degraded.md`; a Deployment can remain `Progressing` inside its deadline despite crashing child pods |
 
-Also check PodDisruptionBudgets when old replicas are pending termination — a PDB that
-cannot be satisfied blocks eviction indefinitely.
+For a Pod stuck initializing (`Init:...`), inspect `.status.initContainerStatuses`,
+not only `.status.containerStatuses`. Read the failing init container's waiting or
+termination reason and bounded logs (`-c <init-container>`); application-container
+logs may not exist yet. Correlate its dependency, image or configuration error with
+Pod events. See [init-container diagnosis](https://kubernetes.io/docs/tasks/debug/debug-application/debug-init-containers/).
+
+A PDB can block API eviction during a node drain; it does not limit a Deployment or
+StatefulSet controller's rolling update. Investigate PDBs only with eviction evidence.
+Source: [Kubernetes disruptions](https://kubernetes.io/docs/concepts/workloads/pods/disruptions/).
 
 ## 4. The controller never acted
 
 `observed deployment generation less than desired generation` means the spec was
 written but `status.observedGeneration` has not caught up. The workload controller is
-not processing it. Causes: a failing mutating admission webhook, a wedged
-kube-controller-manager, or an unschedulable controller. Check for webhook errors in
-the namespace events and confirm the controller is running before blaming the app.
+not yet reporting that generation. Check elapsed time, controller activity and
+conditions. A rejected admission request does not store the rejected spec; distinguish
+a failure creating child resources from a controller that has not observed the update.
 
 ## 5. Kinds that sit Progressing by design
 
@@ -123,9 +131,9 @@ State which of these you concluded, and the evidence:
   simply not hit `ProgressDeadlineExceeded` yet. Diagnose it as the fault it is; it
   will become `Degraded` on its own, and waiting for that adds nothing.
 - **Still working.** Progress is observable — replica counts moving, job log advancing,
-  a recent transition. Report no action required and say what you would expect to
+  successive observations of completed work. Report no action required and say what you would expect to
   change next.
 
-For the last one, check `.status.health.lastTransitionTime` against now. A status that
-has not moved in far longer than the workload's normal rollout time is evidence toward
-wedged; one that changed a minute ago is evidence toward working.
+A recent `.status.health.lastTransitionTime` is timing evidence, not proof of
+progress. Reuse prior observations or collect a bounded follow-up only if needed to
+compare ready replicas, completed work or advancing logs.

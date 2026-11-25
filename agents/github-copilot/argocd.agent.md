@@ -52,8 +52,7 @@ Examples:
 ### Live Cluster Debugging
 
 When users report issues with Argo resources on a live cluster, need to inspect
-resource status, or want health/sync triage, operator-owned permission diagnosis,
-or investigation of Applications ignored with no status — load and apply the
+resource status, or want to troubleshoot failures — load and apply the
 **argo-cluster-debug** skill workflows.
 
 Examples:

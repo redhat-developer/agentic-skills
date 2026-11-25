@@ -17,18 +17,27 @@ The app-level message is a summary. The resource list is the diagnosis.
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.operationState.syncResult.resources[*]}{.status} {.kind}/{.namespace}/{.name}: {.message}{"\n"}{end}' \
-  | grep -v -E "^Synced|^Succeeded"
+  -o jsonpath='{range .status.operationState.syncResult.resources[*]}result={.status} hookPhase={.hookPhase} {.kind}/{.namespace}/{.name}: {.message}{"\n"}{end}'
 ```
 
-| Status | Meaning |
+Do not discard a result just because its apply status is `Synced`: its hook phase can
+still be `Failed` or `Error`. Keep the two fields separate when selecting failures.
+
+| Field / value | Meaning |
 |---|---|
-| `SyncFailed` | The apply was rejected. The message is the API server's or the hook's. |
-| `PruneSkipped` | Not a failure. The resource was left alone deliberately. |
-| `Failed` on a hook | A hook resource failed. The sync stops at that phase. |
+| `status: SyncFailed` | The apply was rejected. Read the API server or operation message. |
+| `status: PruneSkipped` | Not a failure. The resource was left alone deliberately. |
+| `hookPhase: Failed` or `Error` | The resource or hook operation failed; inspect its message and live conditions. |
 
 Quote the message. Nearly every cause below is identifiable from its text alone, and
 the rest of this file is about what to confirm once you have read it.
+
+For a failed hook, inspect its operation result and the Job/Pod conditions and events.
+A failed `PreSync` hook can prevent all normal resources from being created. Read
+`health-missing.md` if the Application is `Missing`; read the Pod rules in
+`health-degraded.md` before explaining why a hook Pod's waiting reason did not produce
+`Degraded`. Hook exclusion from aggregate health and Pod restart-policy rules are
+separate mechanisms.
 
 ## 2. Classify the message
 
@@ -58,7 +67,7 @@ $KCTL auth can-i <verb> <resource> \
 On an operator-managed instance this is almost never fixed by writing a Role. The
 operator creates the destination-namespace Role and RoleBinding from the
 `argocd.argoproj.io/managed-by` label or a `NamespaceManagement` handshake, and a
-hand-written binding will not be adopted. Load `operator-troubleshooting.md` before
+parallel hand-written binding bypasses that grant lifecycle. Load `operator-rbac.md` before
 recommending any RBAC manifest.
 
 A `forbidden` on a **cluster-scoped** kind from a namespace-scoped instance is a
@@ -92,9 +101,10 @@ Causes worth separating, because they lead to different fixes:
   the repo is where it gets fixed.
 - The CRD is an older version than the manifest expects. `unknown field` on a CR
   usually means the operator providing the CRD has not been upgraded.
-- Dry-run was skipped. `SkipDryRunOnMissingResource=true` defers validation of a kind
-  whose CRD is created in the same sync, so a genuine schema error surfaces only at
-  apply time.
+- A missing-kind dry run was skipped, so an error surfaced only at apply time.
+  Argo CD skips that dry run automatically when the CRD is in the same sync.
+  `SkipDryRunOnMissingResource=true` does not disable schema validation for a kind
+  whose CRD is already installed.
 
 ## 5. Conflicts
 
@@ -107,13 +117,17 @@ $KCTL get <kind> <name> -n <ns> \
 
 | Shape | Cause |
 |---|---|
-| Another controller in `managedFields` | A genuine two-writer conflict. One of them has to stop owning the field — `ignoreDifferences` on Argo CD's side if the other writer is authoritative. |
+| Another controller in `managedFields` | Identify the rejected field and actual ownership conflict; multiple managers alone are normal. If another writer is authoritative, `ignoreDifferences` changes comparison only. Assess `RespectIgnoreDifferences=true` when sync must also preserve the existing live field. |
 | `Operation cannot be fulfilled ... object has been modified` | An optimistic-concurrency retry. Usually transient; if it repeats every sync, something writes the object continuously. |
-| An immutable field | `Replace=true` or deletion and recreation is the only path. Job `spec.selector`, Service `clusterIP`, PVC `resources.requests.storage` downward, and StatefulSet fields other than `replicas` and the pod template. |
+| An immutable field | Identify the rejected field and kind/version constraint. `Replace=true` does not bypass immutability. Correct the desired change or plan a supported migration; deletion/recreation is a separate destructive action. |
 
 The immutable-field case deserves care in the report: recreating a StatefulSet or a PVC
 is data-destructive, and triage should name the constraint rather than recommend the
 recreation.
+
+`RespectIgnoreDifferences` requires an existing live object. Forced deletion/recreation
+(`Force=true,Replace=true`) can cause an outage or data loss; it is not a generic
+triage repair. See [Argo CD 3.4 sync options](https://argo-cd.readthedocs.io/en/release-3.4/user-guide/sync-options/).
 
 ## 6. Admission webhooks
 
@@ -128,13 +142,10 @@ A webhook that is *unreachable* rather than *denying* produces a different messa
 an infrastructure fault, not a policy rejection. Its `failurePolicy: Fail` turns an
 unreachable webhook into a blocked sync for every Application touching that kind.
 
-Measure the blast radius before concluding:
-
-```bash
-$KCTL get applications.argoproj.io -A \
-  -o jsonpath='{range .items[*]}{.metadata.name} {.status.operationState.phase}{"\n"}{end}' \
-  | grep -c -E "Failed|Error"
-```
+Correlate failures naming the same webhook across the relevant instance/destination.
+Reuse captured errors; if necessary query compact conditions/results in its watched
+namespaces. A cluster-wide count of Failed/Error operations mixes historical failures
+and unrelated causes, so it does not establish this webhook's blast radius.
 
 ## 7. Missing prerequisites
 
@@ -144,8 +155,9 @@ prerequisite rather than a bad manifest.
 - **Namespace does not exist.** Argo CD does not create it unless
   `CreateNamespace=true` is in `syncOptions`, or the namespace is in the manifests with
   an earlier sync wave.
-- **CRD not installed.** A CRD and its CRs in the same sync need the CRD in an earlier
-  wave, or `SkipDryRunOnMissingResource=true`.
+- **CRD not installed.** Check whether its manifest is in the same sync; Argo CD then
+  skips the missing-kind dry run automatically. If another controller supplies the
+  CRD, verify that prerequisite and ordering. Skipping dry-run does not install it.
 - **Namespace terminating.** Every apply into it fails and nothing is wrong with the
   manifests.
 
@@ -187,4 +199,4 @@ and the Application will stay broken until someone syncs it" is usually the most
 actionable sentence available.
 
 If the cause is RBAC on an operator-managed instance, do not produce a Role or
-RoleBinding manifest. Hand off to `operator-troubleshooting.md`.
+RoleBinding manifest. Hand off to `operator-rbac.md`.

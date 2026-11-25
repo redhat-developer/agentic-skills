@@ -23,8 +23,8 @@ The health message is the check's own words. Quote it in the report — it usual
 the cause, and inventing a different one when the message disagrees is a failed
 diagnosis.
 
-If several resources are `Degraded`, the owning workload is usually the cause and the
-rest are consequences. A Deployment, its ReplicaSet, and its Pods all going `Degraded`
+Correlate owner references and failure evidence before combining degraded resources
+into one causal chain. A Deployment, its ReplicaSet, and its Pods all going `Degraded`
 together is one fault, not three.
 
 ## 2. Match the message to the check that produced it
@@ -56,9 +56,9 @@ A Pod is `Degraded` in exactly these cases:
 
 Two exclusions that change the diagnosis:
 
-- **`Pending` is `Progressing`, not `Degraded`.** An unschedulable pod, one blocked on
-  an unbound PVC, or one waiting on quota does not produce `Degraded`. If the status is
-  `Degraded`, a pending pod is not the cause.
+- **`Pending` without a qualifying container waiting error is `Progressing`.** An unschedulable pod, one blocked on
+  an unbound PVC, or one waiting on quota does not produce `Degraded`. This is the Pod assessment; a Deployment can become `Degraded` after its deadline
+  because its child pods remain Pending. Check which resource produced the status.
 - **Pods with `restartPolicy: OnFailure` or `Never` never take the waiting-reason
   path.** This is deliberate, so a hook pod with `ImagePullBackOff` does not fail its
   sync prematurely. A Job's pod in `ImagePullBackOff` leaves the Job `Progressing`.
@@ -68,13 +68,13 @@ Get the evidence directly:
 ```bash
 $KCTL get pod <pod> -n <ns> \
   -o jsonpath='phase={.status.phase}{"\n"}restartPolicy={.spec.restartPolicy}{"\n"}{range .status.containerStatuses[*]}{.name} ready={.ready} restarts={.restartCount} waiting={.state.waiting.reason} lastTerm={.lastState.terminated.reason}:{.lastState.terminated.exitCode}{"\n"}{end}'
-$KCTL logs <pod> -n <ns> --previous --tail=50
+$KCTL logs <pod> -n <ns> -c <failing-container> --previous --tail=50
 $KCTL get events -n <ns> --field-selector involvedObject.name=<pod> \
   --sort-by=.lastTimestamp | tail -20
 ```
 
-`--previous` is the important one for a crash loop: the current container has not
-failed yet, so its log shows nothing useful.
+`--previous` often captures the crash before restart. Request it only when a previous
+container exists; use bounded current logs when they contain the needed evidence.
 
 Common causes and the evidence that confirms each:
 
@@ -99,10 +99,13 @@ If the kind is a CRD, or the message does not look like any built-in check, the 
 may come from `resource.customizations.health.<group>_<Kind>` in `argocd-cm`:
 
 ```bash
-$KCTL get cm argocd-cm -n "$NS" -o yaml | grep -n "resource.customizations" -A 20
+# Example grouped kind; use the actual implicated key.
+$KCTL get cm argocd-cm -n "$NS" -o jsonpath='{.data.resource\.customizations\.health\.example\.com_Widget}{"\n"}'
 ```
 
-Then the question is whether the script is right about the resource. Read the CR's own
+For core kinds use a kind-only key, such as `resource.customizations.health.Pod`.
+If no split key exists, inspect the relevant entry in legacy `resource.customizations`
+or the bundled check. Then compare the script against the resource evidence. Read the CR's own
 status and compare. A script asserting `Degraded` on a CR that looks healthy is a bug
 in the script. On an operator-managed instance, propose the override in the
 `ArgoCD` CR's `resourceHealthChecks`; a direct `argocd-cm` edit is reconciled away.
@@ -120,14 +123,8 @@ that none exist.
 
 ## 4. Before suggesting anything
 
-Read the sync policy. With `selfHeal: true`, any manual cluster change is reverted
-within seconds, so a `kubectl` fix is not a fix:
-
-```bash
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='automated={.spec.syncPolicy.automated}{"\n"}selfHeal={.spec.syncPolicy.automated.selfHeal}{"\n"}prune={.spec.syncPolicy.automated.prune}{"\n"}'
-```
-
-If the cause is in the manifests — a bad image tag, a wrong limit, a missing env var —
-the correction belongs in git. Say that, and say that a cluster-side edit will be
-reverted. Report it as the cause; do not dress it up as a command.
+Reuse effective automation from the Application snapshot (`../SKILL.md`). Self-heal
+can revert relevant live drift only when automation is enabled; `selfHeal: true` with
+`automated.enabled: false` does not establish reversion. Regardless of automation,
+manifest defects such as a bad image, limit or environment value belong in Git.
+Report the exact observed defect and durable correction; do not execute a live edit.

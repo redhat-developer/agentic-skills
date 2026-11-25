@@ -35,8 +35,8 @@ for input or fabricating it.
 ## When remediation proposals are requested
 
 Health triage may establish the cause without an executable fix. Prefer desired-state
-corrections in Git. Check ownership and `spec.syncPolicy.automated.selfHeal` before
-proposing a live change: Argo CD or another controller may revert it. If the target
+corrections in Git. Reuse ownership and effective automation from the parent skill before
+proposing a live change (`selfHeal` alone is insufficient): Argo CD or another controller may revert it. If the target
 configuration is managed from Git, propose the Git change rather than a temporary patch.
 Do not invent an executable command when the target, intended value or ownership is
 unresolved; express the limitation using the runtime's supported result fields.
@@ -64,7 +64,8 @@ Explain impact and reversibility using the supplied risk enums. Enabling prune c
 delete managed resources no longer in Git; restoring the setting does not restore
 deleted data. An ArgoCD change can affect every Application on the instance and may
 restart components. A destination grant permits broad access to namespaced resources,
-including ServiceAccount impersonation, subject separately to AppProject policy.
+with effective privileges determined by the installed operator's Role rules or custom
+ClusterRole, subject separately to AppProject policy. Do not assume impersonation.
 
 Include verification in the proposed plan: read back the input, check that the operator
 reconciled the generated objects, and verify the original symptom. Where supported,

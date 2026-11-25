@@ -19,10 +19,10 @@ inside it is in `CrashLoopBackOff`; the crash loop is invisible at app level.
 
 Two implications for triage:
 
-1. Find the resource that is `Unknown` and fix the assessment first. Until then you
-   cannot trust the app-level status for anything else.
-2. Always re-read the full resource list afterwards. There is frequently a real fault
-   hiding behind the `Unknown`.
+1. Identify the failed assessment and recommend its owning-input correction; do not
+   mutate it during diagnosis or wait for remediation to investigate other faults.
+2. Review the complete successful resource-health snapshot for masked faults. Reuse it
+   rather than fetching it again merely because the investigation changed branches.
 
 A child `Application` that is `Unknown` is excluded from its parent in an app-of-apps,
 so a parent reporting `Unknown` has its own unknown resource.
@@ -47,19 +47,22 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
 ```
 
 A message of the form `see application-controller logs for N other errors; most recent
-error was: ...` means several resources failed assessment at once. That pattern points
-at the controller or a shared override, not at one workload.
+error was: ...` records multiple assessment errors. Inspect their actual messages;
+separate overrides can fail independently, so this alone does not prove a controller fault.
 
 ## 2. Custom health script errors
 
 The most common cause. Check whether an override exists for the kind:
 
 ```bash
-$KCTL get cm argocd-cm -n "$NS" -o yaml | grep -n "resource.customizations" -A 20
+# Example key; substitute the implicated group/kind.
+$KCTL get cm argocd-cm -n "$NS" -o jsonpath='{.data.resource\.customizations\.health\.example\.com_Widget}{"\n"}'
 ```
 
 The key is `resource.customizations.health.<group>_<Kind>`. For a core-group kind the
-group is empty, giving a leading underscore.
+key is kind-only, for example `resource.customizations.health.Pod` (no underscore).
+If the split key is absent, inspect the relevant legacy `resource.customizations`
+entry or bundled script; absence of a split key is not proof no assessment exists.
 
 A script errors rather than returning a verdict when it indexes a field that does not
 exist on this particular CR — a status subresource that has not been populated yet, a
@@ -70,7 +73,7 @@ the new or just-created instances are `Unknown`.
 Compare the script's assumptions against the live object:
 
 ```bash
-$KCTL get <kind> <name> -n <ns> -o jsonpath='{.status}' | head -c 2000
+$KCTL get <kind> <name> -n <ns> -o jsonpath='{.status}'
 ```
 
 The remediation lives in `argocd-cm`, not in the workload. Note that editing
@@ -101,8 +104,9 @@ observation separates a script bug from a credential problem.
 
 ## 4. The kind disappeared
 
-If a CRD was uninstalled while its CRs still exist, or an API version was removed in a
-cluster upgrade, assessment of those objects fails.
+A removed served API version or stale cached resource inventory can cause discovery
+errors. Deleting a CRD also deletes its custom resources; do not assume they survive
+as readable live CRs. Correlate discovery and comparison errors with the exact version.
 
 ```bash
 $KCTL api-resources 2>&1 | grep -i <kind>
@@ -118,15 +122,16 @@ Assessment also fails when the application controller is itself unhealthy — ou
 memory, wedged, or failing to build the cluster cache.
 
 ```bash
-$KCTL get pods -n "$NS" -l app.kubernetes.io/name="$CR"-application-controller
-$KCTL logs -n "$NS" sts/"$CR"-application-controller --tail=100 | grep -i -E "error|failed to get resource health"
+$KCTL get pods -n "$NS" -l "$CONTROLLER_SELECTOR"
+$KCTL logs "$CONTROLLER_POD" -n "$NS" -c "$CONTROLLER_CONTAINER" --since=15m --tail=100 | grep -i -E "error|failed to get resource health"
 ```
 
 The log line `failed to get resource health for "<Kind>" with name "<name>" in
 namespace "<ns>"` is emitted for exactly this case and names the resource directly.
 
-If the controller is restarting or OOMKilled, every Application it manages is affected
-and the per-Application diagnosis is a distraction. `../../argo-performance-tuning/SKILL.md`
+If current controller failure explains the affected shard/instances, report that
+scope without dropping independently observed workload faults. Historical restarts
+alone do not prove an ongoing outage. `../../argo-performance-tuning/SKILL.md`
 covers controller sizing.
 
 ## 6. Report

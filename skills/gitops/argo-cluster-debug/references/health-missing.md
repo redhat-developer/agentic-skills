@@ -61,11 +61,17 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
 
 | What you see | Cause |
 |---|---|
-| No `operationState` at all | The Application has never synced. Check `syncPolicy` — a manual-sync app that nobody synced is `Missing` by design, not by fault |
-| `phase: Failed` with `forbidden` or `Unauthorized` in a resource message | RBAC. The Argo CD instance may not be permitted in the destination namespace. Load `operator-troubleshooting.md` — the operator owns that grant and it must not be hand-written |
-| `phase: Failed`, message naming a kind | Often a CRD that is not installed. Section 3 |
-| `phase: Error` on a hook | A `PreSync` hook failed and the sync never reached the resources. The hook itself is excluded from health, so it will not show as unhealthy anywhere |
-| `phase: Succeeded`, resource still absent | The object was created and then removed. Section 4 |
+| No `operationState` at all | No operation is recorded in this snapshot. Corroborate with accessible history, creation time and policy before saying it never synced; a deliberately unsynced manual app need not be a fault |
+| `phase: Failed` with `forbidden` or `Unauthorized` in a resource message | RBAC. The Argo CD instance may not be permitted in the destination namespace. Load `operator-rbac.md` — the operator owns that grant and it must not be hand-written |
+| `phase: Failed` or `Error`, result names a failed `PreSync` hook | Read `sync-failed.md`. The hook can prevent normal resources from being created; it is excluded from aggregate health |
+| Other failed resource result | Read the exact message in `sync-failed.md`; a kind name alone does not establish a missing CRD |
+| `phase: Succeeded`, resource still absent | Verify that this object was included and successfully created in that operation before investigating later removal in section 4 |
+
+If the question is why a hook Pod is not `Degraded`, also read the Pod rules in
+`health-degraded.md`. Pods with `restartPolicy: OnFailure` or `Never` do not take
+the waiting-reason Degraded path. That is separate from hooks being excluded from
+the Application rollup; inspect the hook's operation result, Pod events and Job
+conditions to explain the failure.
 
 ## 3. Does the kind exist on the cluster?
 
@@ -76,9 +82,10 @@ $KCTL api-resources | grep -i <kind>
 $KCTL get crd | grep -i <group>
 ```
 
-A sync that fails only for the CRs, while the operator's own resources are fine, is
-usually ordering: the CRD and its CRs went in the same sync wave. Confirm with the
-sync result messages rather than assuming.
+A sync that fails only for CRs requires the actual schema/discovery error and CRD
+readiness evidence. Argo CD handles a CRD included in the same sync; sharing a wave
+alone does not establish the failure. Check ordering and readiness when the CRD is
+supplied by another controller.
 
 Also confirm the destination namespace exists — resources cannot be created in a
 namespace that is absent or terminating:
@@ -90,7 +97,7 @@ $KCTL get ns <dest> -o jsonpath='phase={.status.phase}{"\n"}deletionTimestamp={.
 ## 4. Was it created and then removed?
 
 ```bash
-$KCTL get events -n <ns> --sort-by=.lastTimestamp | grep -i -E "delete|evict|prune" | tail -20
+$KCTL get events -n <ns> --field-selector involvedObject.name=<resource-name> --sort-by=.lastTimestamp | grep -i -E "delete|evict|prune" | tail -20
 ```
 
 Candidates:
@@ -101,11 +108,13 @@ Candidates:
 - A namespace is terminating.
 - Another Application manages the same resource and pruned it. Two Applications
   fighting over one object show as alternating sync and missing states; check whether
-  another Application lists the same resource:
+  another Application in the relevant destination lists the same full resource identity.
+Use tracking annotations and existing inventory to narrow the search; only expand
+to other watched namespaces if ownership remains unresolved:
 
 ```bash
-$KCTL get applications.argoproj.io -A \
-  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name}{"\n"}{end}'
+$KCTL get applications.argoproj.io -n <candidate-application-namespace> \
+  -o jsonpath='{range .items[*]}{.metadata.namespace}/{.metadata.name} destination={.spec.destination} resources={.status.resources}{"\n"}{end}'
 ```
 
 Note that `prune` only removes what is no longer in git. A resource still in the
@@ -117,8 +126,9 @@ expects.
 If the object exists on the cluster but the Application calls it missing, the cause is
 visibility rather than existence:
 
-- **Cluster cache is stale.** A hard refresh re-reads live state. Diagnose it by
-  comparing the object's `creationTimestamp` to `.status.reconciledAt`.
+- **Cluster cache may be stale.** Correlate destination, object identity/timestamps,
+  reconciliation time and current controller cache errors. Timestamps alone do not
+  prove cache failure; do not issue a mutating refresh during diagnosis.
 - **The destination is a different cluster** than you are inspecting. Check
   `.spec.destination.server` before concluding anything from a local lookup.
 - **A resource exclusion** removes the kind from Argo CD's managed set. Instance-wide
@@ -135,5 +145,5 @@ most common correct conclusions:
 - The sync failed, and the resource is missing *because* of that failure. The root
   cause is the sync error; the missing resource is the symptom. Do not report them as
   two findings.
-- The app has never been synced. There is no fault at all. Say that plainly rather
+- The app is confirmed intentionally unsynced. There is no sync fault to repair. Say that plainly rather
   than constructing a cause.

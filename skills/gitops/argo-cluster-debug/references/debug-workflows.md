@@ -1,270 +1,116 @@
-<!-- Loaded on demand by skills/gitops/argo-cluster-debug/SKILL.md. Load only the workflow(s)
-     matching the reported symptom; each is self-contained. -->
+# Debugging workflows
 
-# Debugging Workflows
+Read only the matching workflow. Reuse evidence and successfully read references as
+specified in `../SKILL.md`; examples request missing evidence, not repeated surveys.
+`APP_NS` is the Application namespace; `NS` is the owning instance namespace.
+`APPSET_NS` is the ApplicationSet namespace. Neither is necessarily the destination.
+Initialize variables from observed evidence in each fresh shell.
 
-> **Component selectors:** `$CR` is the ArgoCD instance's name — `openshift-gitops`,
-> `team-b`, etc. Operator-managed workloads are labelled `<cr-name>-<component>`, so a
-> hardcoded `app.kubernetes.io/name=argocd-server` matches **nothing** and the component
-> reads as absent. Resolve it alongside `$NS`:
->
-> ```bash
-> CR=$(kubectl get argocd -n "$NS" -o jsonpath='{.items[0].metadata.name}' 2>/dev/null)
-> CR=${CR:-argocd}   # falls back to the Helm/standalone naming
-> ```
->
-> On a Helm or plain-manifest install the components really are `argocd-*`, so the
-> fallback makes the same commands work on both.
+## Workflow 1: Argo CD installation and ownership
 
-> **Namespace:** `$NS` below is the Argo CD instance's namespace. It is **`openshift-gitops`
-> on OpenShift GitOps**, `argocd` on a standalone install, and something else entirely for a
-> second instance. There is frequently more than one — resolve it once and reuse it:
->
-> ```bash
-> kubectl get argocd -A    # operator-managed instances and their namespaces
-> NS=openshift-gitops      # set to the instance you are working on
-> ```
->
-> The same applies to `namespace: argocd` inside the YAML below — it is a placeholder for
-> the Argo CD instance's namespace. An Application created in `argocd` on a cluster whose
-> instance lives in `openshift-gitops` is never picked up, with no error anywhere.
-> (`namespace:` on an Application's **destination** is a different field — that one is the
-> workload's namespace and is unrelated.)
+Use for installation questions, unresolved ownership, or suspected component failure.
+A known workload failure does not require all these checks.
 
-Execute the workflow that matches the user's problem. Each workflow is self-contained.
-Work through the steps in order — each step builds context for the next.
-
----
-
-## Workflow 1: Argo CD Installation Check
-
-Use when: user asks if Argo CD is installed, reports general Argo CD failures, or as a prerequisite before Application debugging.
-
-**Steps:**
-
-1. Check for Argo CD CRDs:
-   ```bash
-   kubectl get crd | grep argoproj.io
-   ```
-   Expected CRDs: `applications.argoproj.io`, `appprojects.argoproj.io`, `applicationsets.argoproj.io`. If missing, Argo CD is not installed.
-
-2. Identify every Argo CD instance and its namespace. **Do not rely on the
-   `part-of=argocd` label alone** — Operator-managed installs (OpenShift GitOps) do not
-   set it on pods, so the label selector reports nothing on a cluster running several
-   instances, and this step wrongly concludes "Argo CD is not installed":
+1. Start with the requested Application/namespace and existing installation evidence.
+   For an operator-managed instance, inspect the candidate ArgoCD CR and generated
+   workload/ConfigMap owner references. Discover candidates only when unknown:
 
    ```bash
-   # Operator-managed (OpenShift GitOps / argocd-operator): the ArgoCD CR is authoritative
-   if kubectl get crd argocds.argoproj.io >/dev/null 2>&1; then
-     kubectl get argocd -A --no-headers 2>/dev/null | awk '{print $1"\t"$2"\t(operator)"}'
-   fi
-   # Helm / plain-manifest installs do carry the label
-   kubectl get pods -A -l app.kubernetes.io/part-of=argocd --no-headers 2>/dev/null \
-     | awk '{print $1}' | sort -u | sed 's/$/\t-\t(helm)/'
+   $KCTL get argocds.argoproj.io -A \
+     -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name,PHASE:.status.phase
    ```
 
-   Set `NS` to the instance you are debugging and use it for every command below. **There
-   is frequently more than one instance** — investigate candidate instances separately
-   and label each finding. Do not ask for a selection in an unattended run. An ArgoCD
-   CR *named* `argocd` may live in a namespace that is not `argocd`.
+   Preserve Forbidden, NotFound and unsupported-resource errors separately. A denied
+   CR read is not a standalone installation. Never pick `items[0]`. If operator CRs
+   are unavailable, inspect accessible Deployments/StatefulSets in candidate namespaces;
+   a cluster-wide workload inventory is a last discovery step, not a prerequisite.
+   Helm names and labels vary. A namespace matching the Application is a candidate,
+   not proof of ownership: Apps in Any Namespace can be enabled. Use
+   `operator-apps-in-any-namespace.md` when watch ownership is unclear. Report findings
+   separately when several instances remain possible.
+
+2. Inspect the actual workloads once in the established namespace:
 
    ```bash
-   NS=<argo-cd-namespace>    # e.g. openshift-gitops, argocd, team-x-gitops
+   $KCTL get deploy,sts -n "$NS" \
+     -o custom-columns=KIND:.kind,NAME:.metadata.name,OWNER:.metadata.ownerReferences,READY:.status.readyReplicas,WANT:.spec.replicas
    ```
 
-3. Check all pods in that namespace:
-   ```bash
-   kubectl get pods -n "$NS" -o wide
-   ```
-   Operator-managed components are named `<cr-name>-server`, `<cr-name>-repo-server`,
-   `<cr-name>-application-controller` — not `argocd-*`. Match on suffix, not prefix.
-
-4. Verify core components are running. All required components must be `Running` with
-   `READY` containers:
-
-   | Component | Required |
-   |-----------|----------|
-   | server | Yes |
-   | repo-server | Yes |
-   | application-controller | Yes |
-   | applicationset-controller | Yes |
-   | redis | Yes |
-   | dex-server | Yes (when SSO is configured) |
-   | notifications-controller | No (optional) |
-
-   **The `app.kubernetes.io/name=argocd-<component>` selectors do not work on
-   Operator-managed installs.** The Operator sets `app.kubernetes.io/name=<cr-name>-<component>`,
-   so a hardcoded `argocd-` prefix silently matches nothing and every component looks
-   absent. Enumerate instead of guessing the label:
+   Confirm the owner, component image and selector before using a name. Operator names
+   often contain the CR name but suffix/prefix matching alone is not ownership proof.
+   Read the selected workload's selector, containers and readiness in one query:
 
    ```bash
-   kubectl get deploy,sts -n "$NS" -o custom-columns=NAME:.metadata.name,READY:.status.readyReplicas,WANT:.spec.replicas
+   $KCTL get <deployment-or-statefulset> <observed-name> -n "$NS" \
+     -o jsonpath='owners={.metadata.ownerReferences}{"\n"}selector={.spec.selector}{"\n"}{range .spec.template.spec.containers[*]}container={.name} image={.image}{"\n"}{end}conditions={.status.conditions}{"\n"}'
    ```
 
-   Then match components by **suffix** (`-server`, `-repo-server`,
-   `-application-controller`, …). To target one component's pods, read its selector off
-   the workload rather than assuming a label:
+   Check only components required by the configured installation: application-controller,
+   repo-server and cache for normal reconciliation; server for UI/API (not Argo CD Core);
+   ApplicationSet controller when enabled/used; Dex only for Dex-backed SSO (not direct
+   OIDC); notifications only when configured. Zero replicas or an intentionally disabled
+   optional component is not automatically a fault. For failing components use Workflow 5.
+
+3. Establish version only when it affects the diagnosis. An authenticated `argocd
+   version` can report the remote server; core-mode CLI output is not independent
+   operand-version evidence. For the identified operator instance, inspect its reported
+   version and workload images; retain digests as build identifiers, not version numbers:
 
    ```bash
-   kubectl get deploy -n "$NS" <cr-name>-repo-server -o jsonpath='{.spec.selector.matchLabels}'
+   $KCTL get argocds.argoproj.io "$CR" -n "$NS" \
+     -o jsonpath='version={.status.version}{"\n"}phase={.status.phase}{"\n"}'
    ```
 
-   **Note:** `notifications-controller` is not deployed in all installations. Its absence
-   should not be treated as a failure. On OpenShift you will also see non-Argo-CD
-   workloads in the namespace (`gitops-plugin`, `argo-rollouts`) — not components of the
-   Argo CD instance itself.
+   Operator CSV version identifies the operator, not necessarily the exact Argo CD
+   operand. Correlate release metadata with the image/build; otherwise say version
+   unverified. Missing optional status fields do not prove the installation is broken.
 
-5. If argocd CLI is available, check version compatibility:
+4. Read configuration only for the selected hypothesis: health customizations,
+   Kustomize/CMP settings, server URL, or server RBAC policy/scopes. Project individual
+   keys rather than dumping `argocd-cm`/`argocd-rbac-cm`; legacy repository configuration
+   can contain credentials. Use Workflow 6 for operator reconciliation evidence.
+
+5. If installation itself is unresolved, check the relevant CRDs explicitly:
+
    ```bash
-   argocd version
-   ```
-   **In `--core` mode this is vacuous** — the CLI *is* the server, so client and server
-   always match. Three fallbacks, in order, because the obvious ones fail on OpenShift:
-
-   ```bash
-   # 1. The CR's status — usually EMPTY on operator-managed instances. Try it, don't rely on it.
-   kubectl get argocd -n "$NS" -o jsonpath='{.items[0].status.version}{"\n"}'
-
-   # 2. The image — on OpenShift this is DIGEST-PINNED, so it gives you a sha256 and no
-   #    version. Useful for pinning down an exact build, useless for "what version is this".
-   kubectl get deploy -n "$NS" "$CR"-server -o jsonpath='{.spec.template.spec.containers[0].image}{"\n"}'
-
-   # 3. The operator CSV — the ONLY reliable source of a human-readable version on an
-   #    operator-managed cluster. Use the CSV's phase too: it is authoritative where the
-   #    Subscription's `state` is not.
-   oc get csv -n openshift-gitops-operator -o custom-columns=NAME:.metadata.name,PHASE:.status.phase
+   $KCTL get crd applications.argoproj.io appprojects.argoproj.io
+   # Only when ApplicationSet support is relevant:
+   $KCTL get crd applicationsets.argoproj.io
    ```
 
-   Report which source you used. "Version unknown" is a legitimate answer on a
-   digest-pinned install and is better than quoting a sha256 as if it were a version.
-   Compare client and server versions. Mismatches beyond minor version can cause issues.
+   Missing ApplicationSet support alone does not establish that Argo CD is absent.
+   Separate a confirmed missing API from inaccessible discovery or a remote Argo CD
+   installation managing this destination cluster.
 
-6. Check the argocd-cm ConfigMap for server configuration:
-   ```bash
-   kubectl get configmap argocd-cm -n "$NS" -o yaml
-   ```
-   Look for: `url` (server URL), `repositories` (legacy repo config), `resource.customizations` (custom health checks), `kustomize.buildOptions`, `configManagementPlugins`.
+## Workflow 2: Application evidence and routing
 
-7. Check argocd-rbac-cm for RBAC configuration:
-   ```bash
-   kubectl get configmap argocd-rbac-cm -n "$NS" -o yaml
-   ```
-   Look for: `policy.default`, `policy.csv`, `scopes`.
+For known symptoms use the direct route in `../SKILL.md`. Otherwise fetch the missing
+Application state in one read, omitting fields already captured:
 
-8. If any component is CrashLoopBackOff or not ready, get its logs:
-   ```bash
-   kubectl logs -n "$NS" -l app.kubernetes.io/name=<component-name> --tail=100 --previous
-   kubectl logs -n "$NS" -l app.kubernetes.io/name=<component-name> --tail=100
-   ```
+```bash
+$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
+'uid={.metadata.uid} observedAt={.status.reconciledAt}{"\n"}'\
+'project={.spec.project} destination={.spec.destination}{"\n"}'\
+'sync={.status.sync.status} health={.status.health.status} healthMessage={.status.health.message}{"\n"}'\
+'phase={.status.operationState.phase} started={.status.operationState.startedAt} finished={.status.operationState.finishedAt}{"\n"}'\
+'opMessage={.status.operationState.message}{"\n"}'\
+'automated={.spec.syncPolicy.automated}{"\n"}'\
+'comparedRevision={.status.sync.revision} comparedRevisions={.status.sync.revisions}{"\n"}'\
+'operationRevision={.status.operationState.syncResult.revision} operationRevisions={.status.operationState.syncResult.revisions}{"\n"}'\
+'{range .status.conditions[*]}condition={.type}: {.message}{"\n"}{end}'
+```
 
-9. Check Argo CD events:
-   ```bash
-   kubectl get events -n "$NS" --sort-by='.lastTimestamp' | tail -30
-   ```
+A lookup failure goes to `resource-lookup.md`. Do not infer health from sync status or
+from an old operation result. Use `app-health-triage.md` or `app-sync-triage.md` only
+when status selection/semantics need explanation; known states go directly to the
+leaf. Operator authorization and watching use their respective operator guides.
+Use `resource-health.md` when per-resource assessments are needed and not yet known.
 
----
-
-## Workflow 2: Application Debugging
-
-Use for Application questions outside the dedicated triage routes. For health status,
-load `app-health-triage.md`; for sync status or operation failures, load
-`app-sync-triage.md`; for operator-owned permission or watch failures, load
-`operator-troubleshooting.md`. These paths are relative to this reference directory.
-Continue there with the evidence already gathered. Do not complete the generic steps
-before selecting the appropriate router.
-
-**Steps:**
-
-1. Get the Application resource:
-   - argocd CLI:
-     ```bash
-     argocd app get <name> -o yaml
-     ```
-   - kubectl:
-     ```bash
-     kubectl get applications.argoproj.io <name> -n "$NS" -o yaml
-     ```
-   If the Application is in a non-default namespace, the user must specify it or check:
-   ```bash
-   kubectl get applications.argoproj.io --all-namespaces | grep <name>
-   ```
-
-2. Extract and assess sync status from `.status.sync.status`:
-   | Status | Meaning |
-   |--------|---------|
-   | Synced | Live state matches desired state |
-   | OutOfSync | Live state differs from desired state |
-   | Unknown | Comparison could not be performed |
-
-3. Extract and assess health status from `.status.health.status`:
-   | Status | Meaning |
-   |--------|---------|
-   | Healthy | All resources healthy |
-   | Degraded | One or more resources failed |
-   | Progressing | Resources are being rolled out |
-   | Suspended | Resource is paused (e.g., suspended CronJob, paused Rollout) |
-   | Missing | On 3.4, expected non-hook resources have no live objects, or a live custom check returns Missing; use `health-missing.md` |
-   | Unknown | Health assessment not available |
-
-4. Check `.status.conditions` for error messages. Common conditions:
-   - `ComparisonError` — manifest generation failed
-   - `SyncError` — sync operation failed
-   - `InvalidSpecError` — Application spec is invalid
-   - `OrphanedResourceWarning` — resources exist outside the Application's management
-
-5. Check `.status.operationState` for the last sync operation:
-   - `.status.operationState.phase` — Succeeded, Failed, Error, Running
-   - `.status.operationState.message` — error detail
-   - `.status.operationState.syncResult.resources` — per-resource sync results
-
-6. If OutOfSync, analyze the diff:
-   - argocd CLI:
-     ```bash
-     argocd app diff <name>
-     ```
-   - kubectl: inspect `.status.resources` and compare `status` field per resource. Look for resources with `status: OutOfSync`.
-
-7. Check the source configuration. Applications may use either `spec.source` (single-source) or `spec.sources[]` (multi-source, GA since v2.6). Check both:
-   ```bash
-   # Check if multi-source
-   kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{.spec.sources}' 2>/dev/null | grep -q '\[' && echo "multi-source" || echo "single-source"
-
-   # Single-source
-   kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{.spec.source}' | python3 -m json.tool
-
-   # Multi-source — iterate all sources
-   kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{range .spec.sources[*]}repoURL={.repoURL} targetRevision={.targetRevision} path={.path} chart={.chart}{"\n"}{end}'
-   ```
-   For multi-source Applications, each source can fail independently — verify `repoURL`, `targetRevision`, `path`, and Helm `valueFiles` for every entry in `spec.sources[]`.
-
-8. If repo-server is failing to render manifests, check repo-server logs:
-   ```bash
-   kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-repo-server --tail=100
-   ```
-
-9. Inspect managed resources. List resources from `.status.resources` with non-Healthy or non-Synced status:
-   On Argo CD 3.x, resource health is normally external to the Application CR. Load
-   `resource-health.md` before interpreting these health fields; absent health is not
-   a verdict. Use its CLI/API fallback for the per-resource health inventory.
-   ```bash
-   kubectl get applications.argoproj.io <name> -n "$NS" -o jsonpath='{range .status.resources[*]}{.kind}/{.namespace}/{.name}: sync={.status}, health={.health.status}{"\n"}{end}'
-   ```
-
-10. For each unhealthy managed resource, inspect it:
-    ```bash
-    kubectl get <kind> <name> -n <namespace> -o yaml
-    kubectl describe <kind> <name> -n <namespace>
-    kubectl get events -n <namespace> --field-selector involvedObject.name=<name>
-    ```
-
-11. If managed resource is a Deployment/StatefulSet with failing pods:
-    ```bash
-    kubectl get pods -n <namespace> -l <label-selector> --sort-by='.status.startTime'
-    kubectl logs -n <namespace> <pod-name> --tail=100
-    kubectl logs -n <namespace> <pod-name> --previous --tail=100
-    ```
-
-12. Produce a root cause analysis report (see Report Format).
+For source/revision questions, select each source's repoURL, targetRevision, path,
+chart, ref and relevant renderer settings; see `sync-comparison-error.md`. For current
+resource drift use `sync-outofsync.md`; a resource status list is not a manifest diff.
+Preserve independent findings, then use the entry's report route. No generic follow-up
+survey is needed once the selected procedures establish the causes.
 
 ---
 
@@ -307,8 +153,8 @@ Use when: user reports ApplicationSet not generating Applications, generating wr
    kubectl logs -n "$NS" -l app.kubernetes.io/name=$CR-applicationset-controller --tail=200
    ```
 
-6. If generated Applications are failing, select the matching Workflow 2 route in
-   `../SKILL.md` for each Application; reuse the installation evidence.
+6. If generated Applications are failing, read the matching Workflow 2 reference
+   in `../SKILL.md` for each Application; reuse the installation evidence.
 
 7. For progressive sync issues, check `spec.strategy`:
    ```bash
@@ -493,43 +339,63 @@ Use when: user reports canary/blue-green rollout stuck, aborted, or degraded.
 
 ---
 
-## Workflow 5: Log Analysis
+## Workflow 5: Component logs
 
-Use for any Argo component when logs are needed.
+Use the already identified Deployment, StatefulSet or Pod and its actual selector.
+The application-controller may be a StatefulSet; do not require a Deployment.
+If unresolved, use Workflow 1's scoped workload inventory, not guessed label prefixes.
 
-**Steps:**
+```bash
+$KCTL get pods -n "$NS" -l "$COMPONENT_SELECTOR" \
+  -o custom-columns=NAME:.metadata.name,OWNER:.metadata.ownerReferences,CONTAINERS:.spec.containers[*].name,STATE:.status.containerStatuses[*].state,RESTARTS:.status.containerStatuses[*].restartCount
+$KCTL logs "$POD" -n "$NS" -c "$CONTAINER" --since=15m --tail=200
+# Only for a restarted container; widen the window for an older incident:
+$KCTL logs "$POD" -n "$NS" -c "$CONTAINER" --previous --tail=100
+```
 
-1. Identify the Deployment managing the target pods:
-   ```bash
-   kubectl get deployment -n <namespace> -l <label-selector>
-   ```
+Correlate timestamps and Application/resource identity with errors, stack traces,
+connection failures, authorization denials and OOM/restart evidence. A historical
+restart count does not establish a current outage. Filter relevant context before
+returning large logs; retain enough surrounding lines to distinguish the cause.
 
-2. Extract the label selector and container name:
-   ```bash
-   kubectl get deployment <deployment-name> -n <namespace> -o jsonpath='{.spec.selector.matchLabels}' | python3 -m json.tool
-   kubectl get deployment <deployment-name> -n <namespace> -o jsonpath='{.spec.template.spec.containers[*].name}'
-   ```
+## Workflow 6: Operator / OLM reconciliation
 
-3. List pods with matching labels:
-   ```bash
-   kubectl get pods -n <namespace> -l <key=value> --sort-by='.status.startTime'
-   ```
+Use for an unapplied supported CR setting, failed upgrade, or operator-generated
+objects missing despite valid inputs. First distinguish authoritative Git reversion,
+unsupported configuration/scope and actual reconciliation failure. For destination
+or source-namespace issues use the respective operator guide.
 
-4. Get logs — prefer `--tail` to limit output:
-   ```bash
-   kubectl logs <pod-name> -n <namespace> -c <container> --tail=200
-   ```
-   For previous instance (after crash):
-   ```bash
-   kubectl logs <pod-name> -n <namespace> -c <container> --previous --tail=200
-   ```
+Identify the owning operator namespace, Subscription, installed/current CSV and
+referenced InstallPlan; do not select the first item or diagnose another operator.
+Use existing evidence or list compact names/references once, then inspect the selected
+objects (example variables must be initialized in each execution):
 
-5. Analyze logs for:
-   - `level=error` or `"error"` entries
-   - Stack traces
-   - Connection refused / timeout patterns
-   - RBAC denied messages
-   - OOM or resource pressure signals
-   - Repeated restart patterns (check timestamps)
+```bash
+$KCTL get subscriptions.operators.coreos.com "$SUB" -n "$OP_NS" \
+  -o jsonpath='installedCSV={.status.installedCSV} currentCSV={.status.currentCSV} plan={.status.installPlanRef.name}{"\n"}conditions={.status.conditions}{"\n"}'
+$KCTL get csv "$CSV" -n "$OP_NS" \
+  -o jsonpath='version={.spec.version} phase={.status.phase} reason={.status.reason}{"\n"}message={.status.message}{"\n"}'
+$KCTL get installplan "$PLAN" -n "$OP_NS" \
+  -o jsonpath='phase={.status.phase} approved={.spec.approved}{"\n"}conditions={.status.conditions}{"\n"}'
+```
 
----
+Skip absent references rather than issuing empty-name reads. Correlate failed or
+pending upgrade conditions with the selected operator's current readiness and recent
+logs. Subscription `AtLatestKnown` alone does not prove upgrade success; a CSV being
+replaced or historical restarts alone do not prove all reconciliation is broken.
+
+Only when request errors implicate conversion, inspect the ArgoCD CRD:
+
+```bash
+$KCTL get crd argocds.argoproj.io \
+  -o jsonpath='strategy={.spec.conversion.strategy}{"\n"}client={.spec.conversion.webhook.clientConfig}{"\n"}versions={.spec.versions[*].name}{"\n"}stored={.status.storedVersions}{"\n"}'
+```
+
+`strategy: None` needs no conversion webhook. For `Webhook`, verify the failing
+request actually needs conversion and correlate service/endpoints, trust and TLS
+errors. A custom `caBundle` is optional when system trust suffices; an empty value is
+not proof every write fails. Do not issue a test mutation during diagnosis.
+
+Report the observed blocker, its affected instance/operation, and remaining unknowns.
+Use Workflow 1 only if an additional installation question remains unresolved.
+Source: [Kubernetes CRD conversion](https://kubernetes.io/docs/tasks/extend-kubernetes/custom-resources/custom-resource-definition-versioning/).

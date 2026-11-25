@@ -1,6 +1,8 @@
 # Debugging Report Format
 
-Every debugging session must conclude with a structured report.
+Every debugging session must conclude with a structured report. Keep it concise:
+record each observation once and refer to it in the causal explanation, rather than
+repeating full snapshots. Include only evidence relevant to the findings.
 
 ## 1. Summary
 
@@ -11,6 +13,7 @@ Every debugging session must conclude with a structured report.
 | Component Versions | Operator CSV + Argo CD version, e.g. `openshift-gitops-operator.v1.21.3` / Argo CD v3.4.5 |
 | Resource | `<kind>/<namespace>/<name>` |
 | Current Status | Sync/Health/Phase status |
+| Action Required | Whether the evidence warrants a change; do not invent a repair |
 
 **When more than one Argo CD instance is in scope**, repeat sections 1–4 per instance
 under an `## Instance: <namespace>` heading, then give one combined section 5. A single
@@ -31,10 +34,16 @@ Map the full dependency chain relevant to the problem:
 
 ## 4. Root Cause
 
-State the identified root cause with supporting evidence:
+Give one causal chain per independent finding, with supporting evidence:
 - The specific error message or condition
 - The resource and field where the failure originates
 - The chain of causation from root cause to observed symptom
+
+State confidence explicitly for each cause: **High** for direct verification,
+**Medium** for a supported but incomplete chain, **Low** when the underlying cause
+cannot be established. A verified rollout timeout can have High confidence while
+its underlying pod cause remains Low confidence because pod/log reads were denied.
+Name unavailable checks and distinguish them from controller failures.
 
 ## 5. Recommendations
 
@@ -49,15 +58,9 @@ soon; impact says what else moves when someone acts on it. A reader deciding whe
 do this now or in a maintenance window needs the second one, and it is the part they
 cannot work out from the recommendation itself.
 
-```
-BLOCKER — Delete Rollout/openshift-gitops/example (no containers; hot-loops the controller)
-  Impact: argo-rollouts controller only. The Rollout is invalid so nothing runs from
-          it; no workload is affected. Controller restarts once.
-
-HIGH    — Raise argocd-server memory to 1Gi (OOMKilling at the 256Mi default)
-  Impact: restarts argocd-server on the openshift-gitops instance. UI and API
-          unavailable for ~30s for everyone using it. Reconciliation is unaffected.
-```
+Example: correcting a verified invalid environment value in the Deployment's Git
+manifest can replace its pods when reconciled. State the affected workload and any
+unverified shared consumers; do not invent restart counts or outage durations.
 
 Where a cluster and the repository helper are available, compute it rather than guess:
 
@@ -76,12 +79,11 @@ is still far more useful than none.
 rather than omitting the line; silence reads as "unknown", which is a different claim.
 
 Three cases worth stating explicitly whenever they apply:
-- **Operator-managed objects restart on edit.** The restart is itself the impact and it
-  is invisible in a diff.
+- **Operator-managed changes may roll components.** Establish which workloads the
+  particular input affects rather than assuming every edit restarts everything.
 - **Shared instances.** On OpenShift the default `openshift-gitops` instance is usually
   shared; the person asking typically owns one tenant and is not thinking about the others.
 - **Ordering.** If one recommendation must land before another is safe, say so. Enabling
   a gate while a dependency is broken can create the very failure being reported.
 
 ---
-

@@ -19,12 +19,6 @@ without.** 1,174 verdicts, each carrying an evidence string, in [`results/`](res
 | `argo-knowledge` | **95.4%** | 86.9% | **+8.5** | [↗](argo-knowledge.md) |
 | **Weighted overall** | **95.4%** | **74.5%** | **+20.9** | n=425 |
 
-> **Coverage change — 2026-11-20.** Cluster-debug's suite grew from 12 to 46 evals
-> with merged triage and six offline regression scenarios. The displayed Run 9 score
-> is for the pre-merge skill on evals 1–12. Evals 13–46 and merged routing are not
-> covered by Run 9 and are excluded from the weighted overall. See
-> [the coverage note](argo-cluster-debug.md).
-
 **What run 7 actually re-measured.** Only `argo-cluster-debug` was re-run end to end
 (new fixtures for evals 2, 4 and 6), and only `argo-performance-tuning` was re-graded
 (eval 16 gained an expectation). The other four rows carry forward unchanged verdicts

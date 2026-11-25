@@ -4,13 +4,6 @@
 
 **95.0% with the skill vs 78.8% baseline (+16.2) over 80 expectations.**
 
-> **Suite expanded — 2026-11-20.** Health, sync and operator triage now live in this
-> skill; with six offline regression scenarios, its suite now has 46 evals. Run 9
-> measures the pre-merge skill on evals 1–12 only; their ids and expectations are
-> unchanged. Evals 13–46 and routing through the merged entrypoint are not covered
-> by this benchmark. These scores are historical, not a measurement of the merged
-> skill. A live two-arm rerun remains pending.
-
 > Generated with `make baseline` / `make with-skill` / `make grade` — see
 > [methodology](README.md#how-to-produce-a-run). One blind grader scored both arms
 > of each eval in a single call, every verdict carries a verbatim evidence quote,
