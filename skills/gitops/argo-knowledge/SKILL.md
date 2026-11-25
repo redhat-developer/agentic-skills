@@ -211,7 +211,10 @@ user needs a manifest** — do not reproduce these from memory.
 ## Reference Index
 
 Paths are relative to this skill directory. For live triage, load the sibling
-`../argo-cluster-debug/SKILL.md` first, then its indicated reference.
+`../argo-cluster-debug/SKILL.md` first (reuse it if already read), then read the
+specialized reference selected by its symptom table. For a known symptom, go directly
+to that guide; read the health/sync overview only when status selection or aggregation
+needs explanation. Follow each independent finding without repeating completed reads.
 
 | Topic | Reference File | When to Load |
 |-------|---------------|-------------|
@@ -224,7 +227,5 @@ Paths are relative to this skill directory. For live triage, load the sibling
 | Agent mode, principal/agent architecture, managed/autonomous modes, hub-and-spoke | `references/agent-mode.md` | Questions about argocd-agent, multi-cluster at scale, air-gapped, edge deployments |
 | Applications in any namespace, multi-instance, multi-tenancy, Autopilot | `references/multi-tenancy.md` | Questions about multi-tenancy, team isolation, --application-namespaces, Autopilot bootstrap |
 | **Operator-only CRDs** — RolloutManager, NotificationsConfiguration, NamespaceManagement, ImageUpdater, GitopsService | `references/openshift-gitops-operator.md` | Anything that will not stay changed on OpenShift GitOps; deploying Rollouts; notifications; attaching tenant namespaces; image updates |
-| Operator-owned behavior on a live cluster — destination-namespace RBAC (`managed-by`, `NamespaceManagement`) and apps-in-any-namespace (`sourceNamespaces`) | `../argo-cluster-debug/references/operator-troubleshooting.md` | A live Application is `forbidden` or ignored entirely. Field reference stays in `references/openshift-gitops-operator.md`; the diagnosis is the other skill |
-| Live Application **health** triage | `../argo-cluster-debug/references/app-health-triage.md` | `Degraded`, sustained `Progressing`, `Missing` or health `Unknown` on a live Application |
-| Live Application **sync state** triage | `../argo-cluster-debug/references/app-sync-triage.md` | The symptom is `OutOfSync`, a stuck or failed sync, or `Synced` while the cluster is wrong — not a question about what a field means |
+| Live Application health, sync or operator diagnosis | `../argo-cluster-debug/SKILL.md` | `Degraded`, sustained `Progressing`, `Missing`, health/sync `Unknown`, `OutOfSync`, stuck/failed sync, unexpected `Synced` state, destination authorization denial, or an ignored Application. Read the matching specialized guide directly from the debug skill's table; its shared safety rules apply. |
 | GitOps Promoter, PromotionStrategy, environment promotion, commit status gating | `references/gitops-promoter.md` | Questions about environment promotion, PR-based gating, branch-per-environment, gitops-promoter CRDs |
