@@ -14,7 +14,7 @@ operator reconciles your change away.
 |------|--------------------|-------|----------|
 | `RolloutManager` | `argoproj.io/v1alpha1` | Namespaced | Installing argo-rollouts yourself |
 | `NotificationsConfiguration` | `argoproj.io/v1alpha1` | Namespaced | Hand-editing `argocd-notifications-cm` |
-| `NamespaceManagement` | `argoproj.io/v1beta1` | Namespaced | `--application-namespaces` flag wrangling |
+| `NamespaceManagement` | `argoproj.io/v1beta1` | Namespaced | Hand-written destination-namespace RBAC grants |
 | `ImageUpdater` | `argocd-image-updater.argoproj.io/v1alpha1` | Namespaced | Installing + annotating for Image Updater |
 | `GitopsService` | `pipelines.openshift.io/v1alpha1` | **Cluster** | (nothing — it owns the default instance) |
 
@@ -164,8 +164,14 @@ kubectl get notificationsconfiguration -n <argocd-namespace>
 
 ## NamespaceManagement — a two-sided handshake
 
-Lets an Argo CD instance manage Applications in a namespace it does not own. **Both sides
-must agree**, which is the part that trips people up.
+Allows an Argo CD instance to manage workloads in another namespace. **Both sides
+must agree** to the destination permission grant.
+
+Watching `Application` objects in other namespaces is configured separately through
+`ArgoCD.spec.sourceNamespaces` on a supported cluster-scoped instance and the
+AppProject's `spec.sourceNamespaces`. For live watch-scope diagnosis, load
+`../../argo-cluster-debug/SKILL.md`, then
+`../../argo-cluster-debug/references/operator-apps-in-any-namespace.md`.
 
 Tenant side — a `NamespaceManagement` CR *in the tenant namespace*:
 
@@ -197,11 +203,12 @@ spec:
 On the `ArgoCD` side each entry requires both `name` and `allowManagedBy`.
 
 **Gotchas**
-- **One side alone does nothing, and reports nothing.** A `NamespaceManagement` with no
-  matching `ArgoCD.spec.namespaceManagement` entry is inert — no event, no condition. If a
-  tenant's Applications are not being reconciled, check both sides before anything else.
-- Prefer this over hand-editing `--application-namespaces`; the operator owns that flag
-  and will reset it.
+- Both sides must agree. For feature enablement, status conditions and missing
+  destination grants, load `../../argo-cluster-debug/SKILL.md`, then
+  `../../argo-cluster-debug/references/operator-rbac.md`. Keep the diagnostic
+  procedure there; this section describes the CR fields.
+- Configure the handshake instead of hand-editing generated destination Roles or
+  RoleBindings. It does not configure the `--application-namespaces` watch flag.
 - This is how a tenant namespace gets attached to a central Argo CD instance. The
   `NamespaceManagement` CR and the namespace label are both desired state — commit them
   to Git and let Argo CD reconcile them rather than applying them by hand.
@@ -334,7 +341,8 @@ The recurring question when something will not stay changed:
 | Notification templates/triggers/services | `NotificationsConfiguration` | `argocd-notifications-cm` |
 | Whether the notifications controller runs at all | `ArgoCD.spec.notifications.enabled` | — |
 | Rollouts controller image, HA, resources, scope | `RolloutManager` | the argo-rollouts Deployment |
-| Which namespaces an instance may manage | `NamespaceManagement` **and** `ArgoCD.spec.namespaceManagement` | `--application-namespaces` |
+| Destination namespaces where an instance may manage workloads | `NamespaceManagement` **and** `ArgoCD.spec.namespaceManagement`, or the `argocd.argoproj.io/managed-by` namespace label | Generated destination Roles/RoleBindings |
+| Source namespaces where Application objects may live | `ArgoCD.spec.sourceNamespaces` on a supported cluster-scoped instance **and** AppProject `spec.sourceNamespaces` | Generated `--application-namespaces` flags and source-namespace RBAC |
 | Whether the Image Updater controller runs at all | `ArgoCD.spec.imageUpdater.enabled` | — |
 | Image update rules | `ImageUpdater` CR (or legacy annotations) | — |
 | Infra node placement for *default* workloads | `GitopsService` | the default `ArgoCD` CR |

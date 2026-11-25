@@ -8,353 +8,180 @@ description: >
   for CRD inspection. Argo Workflows and Argo Events are out of scope. Use when users
   report failing, stuck, or degraded Argo CD or Rollouts resources on a cluster.
 license: MIT
-compatibility: Requires kubectl; optionally argocd, argo (workflows CLI), kubectl-argo-rollouts
+compatibility: Requires oc or kubectl; optionally argocd and kubectl-argo-rollouts
 ---
 
 # Argo Cluster Debug
 
-Debug and troubleshoot the full Argo ecosystem on live Kubernetes clusters.
+Diagnose Argo CD and Argo Rollouts using read-only evidence. Paths below are relative
+to this skill; paths inside references are relative to the containing document.
+Argo CD 3.4 is the health/sync baseline; newer-version exceptions apply only when
+relevant to the installed build.
 
-## Prerequisites
+## Read before diagnosing
 
-| Tool | Required | Purpose |
-|------|----------|---------|
-| `kubectl` **or** `oc` | Yes | CRD inspection, pod logs, resource status |
-| argocd | No | Richer Application output, diff, sync operations |
-| kubectl-argo-rollouts | No | Rollout status, step details, promotion |
-
-**Resolve the CLI before any workflow. On OpenShift, `oc` is the default.**
-
-```bash
-# Detect the platform and pick the CLI — on OpenShift, oc is the default.
-if command -v oc >/dev/null 2>&1 && oc api-resources --api-group=route.openshift.io 2>/dev/null | grep -q routes; then
-  KCTL=oc; PLATFORM=OpenShift
-elif command -v kubectl >/dev/null 2>&1; then
-  KCTL=kubectl
-  PLATFORM=$(kubectl api-resources --api-group=route.openshift.io 2>/dev/null | grep -q routes && echo OpenShift || echo Kubernetes)
-elif command -v oc >/dev/null 2>&1; then
-  KCTL=oc; PLATFORM=Kubernetes
-else
-  echo "ERROR: no cluster CLI found — install kubectl or oc" >&2; exit 1
-fi
-echo "Platform: $PLATFORM — using '$KCTL'"
-
-# Resolve the Argo CD namespace too — `argocd` is the upstream default and is almost
-# never right on OpenShift, where it is `openshift-gitops` (and often several instances).
-$KCTL get argocd -A --no-headers 2>/dev/null || \
-  $KCTL get pods -A -l app.kubernetes.io/part-of=argocd --no-headers 2>/dev/null | awk '{print $1}' | sort -u
-NS=openshift-gitops      # set to the instance you are working on; every command below uses $NS
-```
-
-Every `kubectl` in the workflows below means `$KCTL`. `oc` accepts all of them verbatim,
-so substituting is always safe. Prefer `oc` on OpenShift — `Route`, `project`,
-`SecurityContextConstraints`, and `oc adm` have no `kubectl` equivalent, and they are
-exactly what you need when the Argo CD UI is unreachable (Route) or a pod will not start
-(SCC). Only report a missing prerequisite when **neither** binary exists.
-
-When `$PLATFORM` is OpenShift, also expect the Argo CD namespace to be
-`openshift-gitops` rather than `argocd`, and instances to be Operator-managed `ArgoCD`
-CRs (`argoproj.io/v1beta1`) — check `$KCTL get argocd -A`.
-
-## How This Skill Works
-
-The debug skill provides **systematic workflows** — each is a sequence of checks that
-traces the problem from surface symptoms to root cause. The value is in the completeness
-of the investigation, not just finding the first error.
-
-**Before starting any workflow:**
-1. Check which CLIs are available (argocd, argo, kubectl-argo-rollouts, kubectl)
-2. Confirm the current cluster context
-3. Pick the matching workflow from the table below and load `references/debug-workflows.md`
-4. Load `references/troubleshooting.md` — it maps symptoms to causes and saves time
-
-**General rules:**
-- Prefer specialized CLIs when available (richer output), fall back to `kubectl get -o yaml`
-- Read-only by default — never sync, promote, or delete unless explicitly asked
-- Analyze `.status.conditions` as the primary diagnostic signal for every Argo CRD
-- Complete the full workflow — don't stop after finding one issue, cascading problems are common
-
-## Writes: Rollout control only
-
-Diagnosis is read-only. This skill performs exactly one class of write — **Argo Rollouts
-runtime control: promote, abort, retry** — because a Rollout's progression is runtime
-state that no controller owns and Git cannot express. Pausing at step 2 awaiting
-promotion is not drift; it is the Rollout doing its job.
-
-Everything else stays out:
-
-| Request | Why not, and what to do |
-|---|---|
-| Create/edit an Application, ApplicationSet, AppProject | Desired state belongs in Git. Hand back the manifest to commit; applying it directly produces the drift Argo CD exists to prevent. |
-| Install, configure or upgrade Argo CD | The OpenShift GitOps Operator's job. Point at the Subscription/CSV. |
-| Rotate repository credentials | Belongs in External Secrets Operator / Vault / Sealed Secrets — see `argo-knowledge`'s `references/openshift-gitops-operator.md`. |
-| Tune performance settings | → `argo-performance-tuning` |
-
-**Every write — including a Rollout promote, abort or retry, and any delete — follows
-the shared protocol in [`../write-safety.md`](../write-safety.md): Generate → Preview →
-Blast radius → Confirm → Verify.** Destructive operations additionally require the user
-to type the resource name; "yes" alone is not sufficient.
-
-Verify a Rollout action by its **resulting phase**, not by the command returning:
-
-```bash
-kubectl argo rollouts get rollout <name> -n <ns>
-# or, with no plugin:
-$KCTL get rollouts.argoproj.io <name> -n <ns> \
-  -o jsonpath='phase={.status.phase} step={.status.currentStepIndex} msg={.status.message}{"\n"}'
-```
-
-## Cluster Context
-
-- If the user specifies a cluster context, switch to it:
-  ```bash
-  kubectl config use-context <context-name>
-  ```
-  If using argocd CLI with a remote server:
-  ```bash
-  argocd context <context-name>
-  ```
-- If no cluster is specified, use the current context. Confirm it:
-  ```bash
-  kubectl config current-context
-  ```
-- Always verify Argo CD installation before Application/ApplicationSet debugging. Check for the argocd namespace and CRDs.
+Read the reference matching the observed symptom before selecting specialized checks
+or recommending a fix. Use the available file-reading tool to read its contents;
+selecting or naming a path does not count as reading it. Resolve paths from the
+loaded skill location, including in Lightspeed bundles. Load only relevant guides and reuse references already
+successfully read in this run. If a required file is missing, unreadable or truncated,
+report the limitation, continue accessible evidence checks, and do not invent its
+procedure. Read an unread remainder when available; do not restart completed reads.
 
 ## Debugging Workflows
 
-Workflows 1–5 live in `references/debug-workflows.md`; Workflow 6 is inline below. Match the reported
-symptom to a workflow below, **load that file, and work its steps in order** — each step
-builds context for the next. The value is in completing the investigation, not in stopping
-at the first error.
+Known symptoms go directly to their procedure. Use the health/sync overviews only for
+unresolved status selection or aggregation questions.
 
-| # | Workflow | Use when |
-|---|----------|----------|
-| 1 | Argo CD Installation Check | User asks if Argo CD is installed, reports general Argo CD failures — **or as a prerequisite before any Application/ApplicationSet debugging** |
-| 2 | Application Debugging | Application sync failure, health degradation, `OutOfSync`, or `Unknown` status |
-| 3 | ApplicationSet Debugging | ApplicationSet not generating Applications, generating the wrong ones, or reporting errors |
-| 4 | Rollout Debugging | Canary or blue-green Rollout stuck, aborted, or degraded |
-| 5 | Log Analysis | Cross-component log correlation when the failing component is not yet known |
-| 6 | Operator / OLM triage | Argo CD itself is misbehaving and the instance looks healthy — upgrade wedged, operator pod crash-looping, CRD conversion webhook failing. See below; this is often upstream of everything else |
+| Workflow / signal | Required reference |
+|---|---|
+| 2c: Operator-managed controller cannot create/update a destination resource (`forbidden`, API authorization denial) | `references/operator-rbac.md` |
+| 2c: Ignored Application, empty/stale status outside watch scope, source-namespace project rejection, UI access after a move | `references/operator-apps-in-any-namespace.md` |
+| 2a: `ComparisonError` message starts `error setting app health` | `references/health-unknown.md` |
+| 2b: Other `ComparisonError`, `InvalidSpecError`, sync `Unknown`, repo auth/render error | `references/sync-comparison-error.md` |
+| 2b: Operation stuck `Running` / `Terminating` | `references/sync-stuck.md` |
+| 2b: Operation `Failed` / `Error`, without a more specific operator cause above | `references/sync-failed.md` |
+| 2b: `OutOfSync`, no operation running or comparison failure | `references/sync-outofsync.md` |
+| 2b: `Synced` but unexpected live state | `references/sync-false-synced.md` |
+| 2a: Health `Degraded` | `references/health-degraded.md` |
+| 2a: Sustained health `Progressing` | `references/health-progressing.md` |
+| 2a: Health `Missing` | `references/health-missing.md` |
+| 2a: Health `Unknown` (not sync `Unknown`) | `references/health-unknown.md` |
+| 2a/2b: Status/phase not yet known, or aggregate health semantics needed | `references/app-health-triage.md` or `references/app-sync-triage.md`, according to the question |
+| 1: Installation discovery or suspected component failure; 2: other Application questions; 3: ApplicationSet; 4: Rollout; 5: component logs; 6: operator/OLM reconciliation | Matching workflow in `references/debug-workflows.md` |
 
-### Workflow 6: Operator / OLM triage (OpenShift GitOps)
+Start with the current causal error: a controller authorization denial can explain
+both `OutOfSync` and `Missing`, while Git HTTP 401 belongs to comparison triage.
+`ComparisonError` alone does not prove the diff failed: route by its message and
+retain observed sync/operation evidence. Read both relevant procedures for independent
+health and sync/operator faults.
+`Synced` + `Degraded` is a health failure; `OutOfSync` + `Degraded` may need both
+branches. Stop a branch once its cause is verified; continue outstanding independent
+findings. Do not follow it with a generic survey.
 
-Not an Argo CD problem but an *operator* problem, and it masquerades as one. Symptoms:
-CR edits revert, a new setting never takes effect, components run an old version, or
-everything is "Available" while nothing you change sticks.
+Before filtering resource health, read `references/resource-health.md` unless a
+successful current-run snapshot already establishes those assessments. Empty inline
+health is not a verdict: 3.x can store it externally. `Progressing` does not establish
+progress, even inside a Deployment's deadline; inspect the workload evidence.
 
-```bash
-# 1. Is the operator itself healthy? Restart count is the tell.
-oc get pods -n openshift-gitops-operator
+## Evidence and execution
 
-# 2. CSV phase is authoritative. The Subscription's `state` is NOT — it reports
-#    AtLatestKnown while the CSV behind it is stuck Pending or Replacing.
-oc get csv -n openshift-gitops-operator -o custom-columns=NAME:.metadata.name,PHASE:.status.phase
-oc get subscriptions.operators.coreos.com -n openshift-gitops-operator \
-  -o jsonpath='installedCSV={.items[0].status.installedCSV} state={.items[0].status.state}{"\n"}'
+1. Establish the requested/current cluster context, resource identity and owning
+   instance. Use `oc` on known OpenShift installations when available; otherwise use
+   `kubectl` or `oc`. Argo CD and Rollouts CLIs are optional. A denied discovery read
+   does not establish platform or installation type. Prefer explicit context options
+   when targeting a different cluster; align any Argo CD CLI session with that target.
+2. Use `applications.argoproj.io`, not ambiguous short names. `APP_NS` is the
+   Application object's namespace, `NS` the instance namespace, and `DEST` the workload
+   destination. For an empty/NotFound lookup read `references/resource-lookup.md`.
+   Never select the first ArgoCD CR or silently substitute an instance. If ownership
+   is unresolved, use Workflow 1 in `references/debug-workflows.md` for discovery.
+3. Reuse current-run identity, installation and Application evidence. Do not require
+   a full installation survey for a workload error. Expand to Workflow 1 only for
+   unresolved installation questions or evidence of a component problem.
+4. Fetch related fields together with JSONPath or filtered JSON: identity, project,
+   destination, source/revisions, sync policy, conditions, sync/health and operation
+   state as needed. Keep comparison status, operation result and health distinct.
+   Preserve source indexes and revision arrays for multi-source Applications.
+5. Reference commands are evidence requests, not a checklist to repeat. Reuse a
+   successful observation of the same object/context; retain its timestamp and
+   provenance. Refresh only to resolve changed state, stale evidence or a progress
+   question. Read only missing fields at a handoff.
+6. Avoid full YAML, annotations, managedFields and unrelated configuration by default.
+   Select the fields that test the hypothesis. Scope events to resource UID/name and
+   logs to the observed pod/container, time window and bounded tail. Expand a truncated
+   result when needed to establish the cause; never treat omitted evidence as absent.
+   Redact credentials in URLs, condition messages and logs before reporting them.
+7. A denied read is unavailable evidence, not proof of absence or controller RBAC
+   failure. Do not retry unchanged failures or seek extra privileges in diagnosis.
+   Change the approach or report the gap. In unattended runs, report ambiguity and
+   confidence without questions; investigate candidate instances separately.
+8. Shell calls may start fresh. Initialize every variable used (`KCTL`, `NS`, `CR`,
+   `APP`, `APP_NS`, and any workload/pod variables) in each call, or combine related
+   commands in one call. Use observed names/selectors; examples using `$CR` component
+   names must be adapted to the actual deployment, including standalone installs.
 
-# 3. A failed InstallPlan is the usual blocker
-oc get installplan -n openshift-gitops-operator \
-  -o custom-columns=NAME:.metadata.name,PHASE:.status.phase
-oc describe installplan -n openshift-gitops-operator | grep -A5 -i 'message\|condition'
+For inconclusive component checks use `references/troubleshooting.md`, reading only
+the relevant section. A specialized procedure that establishes a cause needs no
+additional generic troubleshooting.
 
-# 4. Conversion webhook — an empty caBundle or a crash-looping operator pod makes every
-#    ArgoCD CR write fail admission, which looks like "my edits revert"
-oc get crd argocds.argoproj.io \
-  -o jsonpath='{.spec.conversion.webhook.clientConfig.caBundle}{"\n"}' | wc -c
-```
+## Operator and desired-state safety
 
-**A zero-length `caBundle`, or an operator pod with hundreds of restarts, means the
-operator cannot reconcile anything.** Fix that before investigating any Argo CD symptom
-downstream of it — otherwise you are debugging the shadow.
+- Destination workload permissions use `argocd.argoproj.io/managed-by` with the
+  **instance namespace** as value, or the supported `NamespaceManagement` handshake.
+  Do not recommend hand-written operator-owned Roles/RoleBindings. Cluster scope
+  alone does not establish permission to create every workload kind.
+- Watching Applications elsewhere uses `ArgoCD.spec.sourceNamespaces` on a supported
+  cluster-scoped instance, plus AppProject `spec.sourceNamespaces`. Destination grants
+  do not enable watching. Do not edit generated labels, flags or ConfigMaps.
+- Distinguish controller authorization, diagnostic-reader denial, repository
+  authentication and admission rejection; they have different owners and fixes.
+- Recommend authoritative Git or ArgoCD CR changes. Read the effective automation
+  policy before predicting reversion: absent `automated` or `automated.enabled: false`
+  disables auto-sync; `{}` or omitted/null `enabled` enables it. `selfHeal: true` alone
+  does not prove a live change will be reverted. Do not enable automation as a generic
+  fix for an intentionally manual-sync Application.
+- Inspect the installed CRD schema/version before recommending operator fields.
+  Source checks against an operator commit do not prove every packaged release
+  supports the same inputs. Credential rotation belongs to its authoritative secret
+  management: see `../argo-knowledge/references/openshift-gitops-operator.md` when needed.
 
-Run **Workflow 1 first** whenever Argo CD's own health is unverified — a broken controller
-or repo-server explains most Application-level symptoms, and skipping it leads to
-misdiagnosing a healthy Application as broken.
+## Writes: Rollout control only
 
-If a workflow is inconclusive, `references/troubleshooting.md` maps symptoms to causes.
+Diagnosis is read-only: do not sync Applications, refresh by mutation, edit resources,
+install components, or delete Applications. Only explicitly requested Argo Rollouts
+runtime control — **promote, abort, retry** — is in scope for writes.
 
-## Report Format
+Each permitted write follows [`../write-safety.md`](../write-safety.md): Generate →
+Preview → Blast radius → Confirm → Verify. Destructive operations additionally require
+the resource name as confirmation. If the target is ambiguous, resolve it before a
+write. Verify resulting Rollout phase, abort flag, step and conditions, not just CLI
+exit status. A proposed command does not authorize execution.
 
-Every debugging session must conclude with a structured report.
+## Report
 
-### 1. Summary
+Keep the report concise and record each observation once. For Markdown, use Summary,
+Evidence, Root Cause and Recommendations. Identify the cluster context, instance,
+resource and current status; include versions when relevant and verified. Separate
+instances and give one evidence-backed causal chain per independent finding.
 
-| Field | Value |
-|-------|-------|
-| Cluster Context | `<context-name>` |
-| Argo Component | Argo CD / Rollouts |
-| Component Versions | Operator CSV + Argo CD version, e.g. `openshift-gitops-operator.v1.21.3` / Argo CD v3.4.5 |
-| Resource | `<kind>/<namespace>/<name>` |
-| Current Status | Sync/Health/Phase status |
+- State whether action is required. Distinguish verified causes from reported symptoms
+  and unavailable checks. Use High confidence for direct verification, Medium for a
+  supported but incomplete chain, and Low for an unresolved cause. A verified symptom
+  does not establish its underlying cause. Continue independently observed faults even
+  when aggregate status appears healthy; do not invent repairs for intentional pauses
+  or other working-as-configured states.
+- Prioritize recommendations and explain their impact, dependencies and reversibility.
+  Establish affected workloads and shared consumers from ownership/references; label
+  inaccessible impact unverified. Operator input changes may restart components or
+  affect other Applications. Do not invent outage durations. Pruning can delete data;
+  reverting a setting does not restore deleted data.
+- When the caller supplies a schema, use its exact fields, types, enums and envelope
+  instead of the Markdown layout. Preserve evidence and unavailable checks in allowed
+  fields; do not invent extra fields or actions to fill optional sections. Validate
+  against the schema when a validator is available. A missing required runtime contract
+  must be reported, not fabricated; in unattended runs do not wait for input.
+- When a remediation plan is requested, prefer authoritative Git/operator inputs under
+  the safety rules above. Do not invent executable commands when targets, ownership or
+  intended values are unresolved. If the contract requires permission declarations,
+  state only those needed for the proposed commands, with the actual resource and
+  namespace scope: namespace objects are cluster-scoped; Application, instance and
+  workload namespaces can differ. Declarations and proposed commands do not authorize
+  execution. Runtime approval, execution and lifecycle transitions belong to the caller;
+  `actionRequired` alone does not establish a run's completion state.
+- Include verification in proposed fixes: read back the authoritative input, confirm
+  reconciliation of generated objects, then recheck the original symptom. During
+  diagnosis these remain proposals; do not execute mutations or claim post-change
+  verification passed. A successful patch response alone would not prove recovery.
 
-**When more than one Argo CD instance is in scope**, repeat sections 1–4 per instance
-under an `## Instance: <namespace>` heading, then give one combined section 5. A single
-flat report across instances hides which instance owns which fault — and on OpenShift,
-`openshift-gitops` plus one or more tenant instances is the normal case, not an edge case.
+## Edge cases
 
-### 2. Resource Analysis
-
-- **Spec**: key configuration details (source, strategy, template)
-- **Status Conditions**: each condition with type, status, message, timestamp
-- **Events**: relevant Kubernetes events
-
-### 3. Dependency Chain
-
-Map the full dependency chain relevant to the problem:
-- Argo CD: `Git Repo -> Repo Server -> Application -> Managed Resources -> Pods`
-- Rollouts: `Rollout -> ReplicaSets -> Pods`, `Rollout -> AnalysisRun -> Metric Provider`
-
-### 4. Root Cause
-
-State the identified root cause with supporting evidence:
-- The specific error message or condition
-- The resource and field where the failure originates
-- The chain of causation from root cause to observed symptom
-
-### 5. Recommendations
-
-Prioritized list of actions:
-- **BLOCKER** — must fix to restore functionality
-- **HIGH** — significant risk if not addressed
-- **MEDIUM** — best practice violation contributing to the issue
-- **LOW** — improvement for reliability or observability
-
-**Every recommendation must state its impact, not just its urgency.** Priority says how
-soon; impact says what else moves when someone acts on it. A reader deciding whether to
-do this now or in a maintenance window needs the second one, and it is the part they
-cannot work out from the recommendation itself.
-
-```
-BLOCKER — Delete Rollout/openshift-gitops/example (no containers; hot-loops the controller)
-  Impact: argo-rollouts controller only. The Rollout is invalid so nothing runs from
-          it; no workload is affected. Controller restarts once.
-
-HIGH    — Raise argocd-server memory to 1Gi (OOMKilling at the 256Mi default)
-  Impact: restarts argocd-server on the openshift-gitops instance. UI and API
-          unavailable for ~30s for everyone using it. Reconciliation is unaffected.
-```
-
-Where a cluster is reachable, compute it rather than guess:
-
-```bash
-<repo-root>/scripts/blast-radius.sh <kind> <name> [namespace]
-```
-
-It resolves the fan-out for `ArgoCD`, `AppProject`, `ApplicationSet`, `Application`,
-`RolloutManager` and the shared ConfigMaps, and is strictly read-only. With no cluster,
-reason it out from the manifests and **say it was not verified** — an unverified impact
-is still far more useful than none.
-
-"Impact: this Application only, nothing else references it" is a good answer. Say it
-rather than omitting the line; silence reads as "unknown", which is a different claim.
-
-Three cases worth stating explicitly whenever they apply:
-- **Operator-managed objects restart on edit.** The restart is itself the impact and it
-  is invisible in a diff.
-- **Shared instances.** On OpenShift the default `openshift-gitops` instance is usually
-  shared; the person asking typically owns one tenant and is not thinking about the others.
-- **Ordering.** If one recommendation must land before another is safe, say so. Enabling
-  a gate while a dependency is broken can create the very failure being reported.
-
----
-
-## Edge Cases
-
-Handle these scenarios explicitly:
-
-| Scenario | Behavior |
-|----------|----------|
-| Argo CD not installed (no argocd namespace or CRDs) | Report "Argo CD is not installed on this cluster" and stop Application/AppSet workflows |
-| argocd CLI not logged in | Detect `{"level":"fatal","msg":"Argo CD server address unspecified",...}` (JSON, not a literal `FATAL:` prefix — grep for `\"level\":\"fatal\"` or just `fatal`) and suggest `argocd login <server>` |
-| **The named resource does not exist** | Do not invent findings and do not silently debug a different object. Run the not-found procedure below, report what you searched, then either ask for the right name or clearly label any substitute as a method demonstration only |
-| Multiple Argo CD instances | Report **per instance** (see Report Format) rather than asking the user to choose — multiple instances are the norm on OpenShift. Ask only if a *write* is required and the target is ambiguous |
-| Application in Progressing state | Note that the resource is actively reconciling — wait 60s and re-check before diagnosing |
-| Suspended Application or Rollout | Report as intentional suspension, do not treat as error unless user says otherwise |
-| Unknown health status | Check for custom health check Lua scripts in `argocd-cm` under `resource.customizations.health.<group_kind>` |
-| Rollout without traffic management | Note that canary is replica-based only — weight percentages are approximated by replica ratio |
-| Helm source with missing values files | Check `spec.source.helm.valueFiles` paths relative to the chart, not the repo root |
-| Multi-source Application | Iterate all entries in `spec.sources[]` — each source can fail independently |
-
-## When the named resource does not exist
-
-The most common real debugging session does not start from a broken resource — it starts
-from a name that does not resolve. Typo, wrong namespace, wrong cluster context, wrong
-Argo CD instance, or already deleted. **Establish this before running any workflow**, or
-you will produce a confident analysis of nothing.
-
-```bash
-# 1. Search cluster-wide. Always the FULL resource name — see the gotcha below.
-$KCTL get applications.argoproj.io -A | grep -i <name>
-
-# 2. Not there? It may have been deleted recently.
-$KCTL get events -A --field-selector involvedObject.name=<name> \
-  --sort-by=.lastTimestamp 2>/dev/null | tail -5
-
-# 3. Confirm you are on the cluster the user means.
-$KCTL config current-context
-
-# 4. Confirm which Argo CD instance should own it.
-$KCTL get argocd -A
-```
-
-**Gotcha — the short form can resolve to the wrong CRD.** On clusters running Open
-Cluster Management (common on OpenShift), `kubectl get application <name>` resolves to
-`applications.app.k8s.io`, not Argo CD, and returns a `NotFound` for the *wrong kind*:
-
-```
-Error from server (NotFound): applications.app.k8s.io "<name>" not found
-```
-
-That reads as "your Application is gone" when it may exist perfectly well. Always write
-`applications.argoproj.io` explicitly.
-
-**This is not limited to `application`.** Any short name served by more than one API
-group resolves to whichever group sorts first, and a miss is reported as `NotFound` for
-that *other* kind — which reads as "it does not exist" rather than "you asked the wrong
-API". On a cluster running ACM/MCE, `subscription` is the other common one:
-
-```bash
-# Two groups serve `subscriptions` on an ACM cluster:
-#   apps.open-cluster-management.io/v1   <- the bare name hits this
-#   operators.coreos.com/v1alpha1        <- OLM's, the one you almost always want
-$KCTL get subscription -A                        # "No resources found"  (WRONG kind)
-$KCTL get subscriptions.operators.coreos.com -A  # the operator Subscriptions
-```
-
-Observed: a bare `get subscription -A` returned "No resources found" on a cluster whose
-OLM Subscription was present and healthy, which led to a confident — and wrong — root
-cause of "the Subscription was deleted".
-
-**Before trusting any empty result, check whether the short name is ambiguous:**
-
-```bash
-$KCTL api-resources | awk '$1=="<shortname>"'   # more than one row == ambiguous
-```
-
-An empty result from a bare short name is not evidence of absence.
-
-**Then report it as a finding, not a failure.** State what you searched and what exists.
-If you demonstrate the method on a different resource, say so in the heading — never let
-a substitute read as the user's resource.
-
-## Argo CRD Reference
-
-All CRDs use `apiVersion: argoproj.io/v1alpha1` unless noted:
-
-| Kind | Project | Description |
-|------|---------|-------------|
-| Application | Argo CD | Defines a deployed application |
-| AppProject | Argo CD | Groups applications with RBAC and restrictions |
-| ApplicationSet | Argo CD | Templated multi-cluster/multi-env application generation |
-| Rollout | Argo Rollouts | Advanced deployment with canary/blue-green |
-| AnalysisTemplate | Argo Rollouts | Metrics-based promotion criteria |
-| ClusterAnalysisTemplate | Argo Rollouts | Cluster-scoped AnalysisTemplate |
-| AnalysisRun | Argo Rollouts | Instance of an analysis execution |
-| Experiment | Argo Rollouts | Temporary ReplicaSet for A/B testing |
-
-## Reference Index
-
-| Topic | Reference File | When to Load |
-|-------|---------------|-------------|
-| The seven step-by-step debugging workflows (installation, Application, ApplicationSet, Rollout, Workflow, Events, log analysis) | `references/debug-workflows.md` | **Every debugging session** — load the workflow matching the symptom |
-| Symptom → cause → fix tables for Argo CD and Argo Rollouts | `references/troubleshooting.md` | Alongside a workflow, or when a workflow is inconclusive |
+- Missing namespace or denied CRD discovery alone does not prove Argo CD is absent.
+- If an optional CLI is unavailable or unauthenticated, use Kubernetes evidence and
+  state which diff/history could not be obtained. Inspect error output as well as exit
+  status; do not repeatedly retry a broken Argo CD core-mode connection.
+- Without traffic management, Rollouts canary weights approximate replica ratios.
+- Multi-source entries can fail independently. Helm values paths can be chart-relative
+  or reference another source through `$ref`; follow `references/sync-comparison-error.md`.
+- Argo CD/Rollouts CRs use `argoproj.io/v1alpha1`; operator ArgoCD CRs commonly use
+  `argoproj.io/v1beta1`. Discover the served schema rather than assuming it.
