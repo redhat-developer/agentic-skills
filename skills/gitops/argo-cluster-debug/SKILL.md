@@ -135,13 +135,39 @@ exit status. A proposed command does not authorize execution.
 
 ## Report
 
-Use `references/report-format.md` for Markdown, or `references/runtime-output.md`
-when the caller supplies a schema; obey its fields and types. Give one evidence-backed
-causal chain per independent finding, confidence, unavailable checks, whether action
-is required, and recommendation impact. Separate instances and distinguish verified
-causes from reported/unverified symptoms. Do not invent remediation for intentional
-suspension or other working-as-configured states; continue independently observed
-faults even when the aggregate status appears healthy.
+Keep the report concise and record each observation once. For Markdown, use Summary,
+Evidence, Root Cause and Recommendations. Identify the cluster context, instance,
+resource and current status; include versions when relevant and verified. Separate
+instances and give one evidence-backed causal chain per independent finding.
+
+- State whether action is required. Distinguish verified causes from reported symptoms
+  and unavailable checks. Use High confidence for direct verification, Medium for a
+  supported but incomplete chain, and Low for an unresolved cause. A verified symptom
+  does not establish its underlying cause. Continue independently observed faults even
+  when aggregate status appears healthy; do not invent repairs for intentional pauses
+  or other working-as-configured states.
+- Prioritize recommendations and explain their impact, dependencies and reversibility.
+  Establish affected workloads and shared consumers from ownership/references; label
+  inaccessible impact unverified. Operator input changes may restart components or
+  affect other Applications. Do not invent outage durations. Pruning can delete data;
+  reverting a setting does not restore deleted data.
+- When the caller supplies a schema, use its exact fields, types, enums and envelope
+  instead of the Markdown layout. Preserve evidence and unavailable checks in allowed
+  fields; do not invent extra fields or actions to fill optional sections. Validate
+  against the schema when a validator is available. A missing required runtime contract
+  must be reported, not fabricated; in unattended runs do not wait for input.
+- When a remediation plan is requested, prefer authoritative Git/operator inputs under
+  the safety rules above. Do not invent executable commands when targets, ownership or
+  intended values are unresolved. If the contract requires permission declarations,
+  state only those needed for the proposed commands, with the actual resource and
+  namespace scope: namespace objects are cluster-scoped; Application, instance and
+  workload namespaces can differ. Declarations and proposed commands do not authorize
+  execution. Runtime approval, execution and lifecycle transitions belong to the caller;
+  `actionRequired` alone does not establish a run's completion state.
+- Include verification in proposed fixes: read back the authoritative input, confirm
+  reconciliation of generated objects, then recheck the original symptom. During
+  diagnosis these remain proposals; do not execute mutations or claim post-change
+  verification passed. A successful patch response alone would not prove recovery.
 
 ## Edge cases
 
