@@ -7,25 +7,16 @@
 normal state during a rollout. The symptom here is that it is *sustained* — it has not
 resolved on its own.
 
-The judgment this file exists to support is: **wedged, or still working?** Both look
-identical in the Application status. Getting it wrong in either direction is costly —
-recommending action on a healthy rollout, or reporting "still progressing" about
-something that will never finish.
-
 ## The timing trap
 
-A failing Deployment reports `Progressing`, not `Degraded`, until its `Progressing`
-condition reaches `ProgressDeadlineExceeded`. `progressDeadlineSeconds` defaults to
-**600 seconds**. Any automated trigger with a grace period shorter than ten minutes
-sees failing Deployments as `Progressing`.
+With the built-in check, a failed Deployment rollout can remain `Progressing` until
+the observed generation has a `ProgressDeadlineExceeded` condition. The default
+`progressDeadlineSeconds` is **600 seconds**, but inspect its actual value and
+conditions; paused Deployments and custom assessments differ. A crash-looping
+workload and a normal rollout can share this status. Look at the pods.
 
-So for the first ten minutes, a Deployment whose pods are in `CrashLoopBackOff` and a
-Deployment that is rolling out normally are the same status. Never infer "it is still
-working" from `Progressing`. Look at the pods.
-
-If `progressDeadlineSeconds` is set very high, or the workload is a kind with no
-deadline concept, the Application can sit `Progressing` indefinitely and will never
-reach `Degraded` on its own.
+A long configured deadline delays the timeout; a kind without deadline-based
+assessment may remain `Progressing` indefinitely. Neither establishes progress.
 
 ## 1. Identify the progressing resource and its message
 
@@ -38,17 +29,18 @@ The message is diagnostic on its own. Match it before running anything else.
 
 | Message | Meaning |
 |---|---|
-| `Pending deletion` | The object has a `deletionTimestamp`. Go to section 2 — this is the most common sustained case and has nothing to do with the rollout. |
-| `Waiting for rollout to finish: N out of M new replicas have been updated...` | New pods have not been created yet |
+| `Pending deletion` (possibly with finalizer details) | The object has a `deletionTimestamp`. Go to section 2. |
+| `Waiting for rollout to finish: N out of M new replicas have been updated...` | Fewer replicas have been updated than requested; inspect the ReplicaSet and Pods |
 | `Waiting for rollout to finish: N old replicas are pending termination...` | Old pods are not going away — inspect rollout constraints, deletion timestamps, finalizers and termination grace periods |
 | `Waiting for rollout to finish: N of M updated replicas are available...` | Pods exist but are not ready — readiness probes, section 3 |
-| `observed deployment generation less than desired generation` | The Deployment controller has not acted on the spec at all. Section 4. |
+| `observed deployment generation less than desired generation` | The controller has not reported observing the current generation. Section 4. |
 
 ## 2. Stuck terminating
 
-A resource with a `deletionTimestamp` and no hook finalizer is `Progressing` with
-message `Pending deletion`, regardless of anything else. A finalizer that never
-completes holds this forever.
+In 3.4, deletion without a hook finalizer returns `Progressing` / `Pending deletion`
+before assessment. Newer builds may assess first: errors can return `Unknown`, and
+custom `deletionMessage` can override status/message. Check installed support only
+if the observed result differs; otherwise use the 3.4 rule.
 
 ```bash
 $KCTL get <kind> <name> -n <ns> \
@@ -59,8 +51,8 @@ Finalizers can reflect normal cleanup. Correlate deletion age, remaining depende
 and the owning controller's activity before calling one stuck. Do not strip finalizers
 or assume another sync clears the blocker.
 
-A namespace stuck `Terminating` produces the same shape across every resource in it,
-and is worth checking once before diagnosing resources individually:
+A terminating namespace may explain blocked cleanup or creation. Check it once
+when relevant; do not assume every remaining object already has a deletion timestamp:
 
 ```bash
 $KCTL get ns <ns> -o jsonpath='phase={.status.phase}{"\n"}finalizers={.spec.finalizers}{"\n"}'
@@ -111,15 +103,11 @@ recommending anything:
 
 | Kind | Why |
 |---|---|
-| Job | A Job with no `Complete` or `Failed` condition is `Progressing`. A legitimately long job looks identical to a hung one — check the pod's logs and age, not just the Job |
-| Pod with `restartPolicy: OnFailure` or `Never` | Running is `Progressing`, not `Healthy`, because these pods are expected to terminate. Hook pods and Job pods are in this class |
+| Job | With no completion, failure or suspension condition, it is `Progressing`. `Suspended=True` yields `Suspended`. Check logs and progress before calling a long-running job hung |
+| Pod with `restartPolicy: OnFailure` or `Never` | Running is normally `Progressing`. On newer builds supporting it, a non-hook Pod with `argocd.argoproj.io/ignore-restart-policy: "true"` instead uses the Always-policy readiness/error checks |
 | PVC | Pending is `Progressing`. With `WaitForFirstConsumer` this is correct and resolves when a consumer pod is scheduled |
-| Rollout paused at a step | An Argo Rollouts canary awaiting promotion is working as configured. `../SKILL.md` has the Rollout workflow |
-| Service of type LoadBalancer | Progressing until an ingress IP is assigned; on a cluster with no load balancer provider this never completes |
-
-For these, the correct output is frequently a diagnosis with **no action required**.
-Saying "this Job has been running 14 minutes and is still making progress, no action
-needed" is a complete and correct answer.
+| Rollout paused at a step | The bundled check maps observed Rollout phase `Paused` to `Suspended`. Investigate another resource, stale status or an override if this does not explain aggregate `Progressing`; `../SKILL.md` has the Rollout workflow |
+| Service of type LoadBalancer | Progressing until `status.loadBalancer.ingress` is nonempty; an IP or hostname entry qualifies. Verify provider configuration if it remains empty |
 
 ## 6. Decide and report
 
@@ -129,7 +117,7 @@ State which of these you concluded, and the evidence:
   unschedulable pod, a failed webhook, a PDB. Name it.
 - **Failing, inside the deadline.** The pods show a real fault and the Deployment has
   simply not hit `ProgressDeadlineExceeded` yet. Diagnose it as the fault it is; it
-  will become `Degraded` on its own, and waiting for that adds nothing.
+  may later reach the deadline; waiting for that adds no diagnostic evidence.
 - **Still working.** Progress is observable — replica counts moving, job log advancing,
   successive observations of completed work. Report no action required and say what you would expect to
   change next.

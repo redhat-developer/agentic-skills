@@ -3,21 +3,24 @@
 
 # A sync that failed
 
-`Failed` means the operation ran and at least one resource could not be applied.
-`Error` means the operation could not be carried out at all. Both leave a message, and
-a per-resource result that says exactly which object broke.
+`Failed` can mean apply/prune rejection, failed health or hooks, a policy gate before
+apply, or requested termination. `Error` can occur before or during execution. Neither
+phase guarantees a failed resource result; read the operation message and conditions
+first, then any resource results. Do not infer how much ran from the phase alone.
 
-Note that a failed sync does **not** make the Application `OutOfSync` on its own — the
-status reflects the comparison that followed. An Application reading `Synced` with
-phase `Failed` is normal and means the failure did not change the diff.
+A failed operation does **not** make the Application `OutOfSync` on its own. Sync
+status reflects comparison, which can report `Synced` even after a hook/health failure
+or partially executed operation. Preserve both outcomes and their timestamps.
 
-## 1. Read the per-resource result
+## 1. Read the operation and resource results
 
-The app-level message is a summary. The resource list is the diagnosis.
+Reuse current evidence; retrieve missing operation context and resource results together.
+An empty result list does not mean no failure: a policy, configuration or comparison
+error can stop execution before resource tasks are recorded.
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.operationState.syncResult.resources[*]}result={.status} hookPhase={.hookPhase} {.kind}/{.namespace}/{.name}: {.message}{"\n"}{end}'
+  -o jsonpath='phase={.status.operationState.phase} message={.status.operationState.message}{"\n"}{range .status.conditions[*]}condition={.type}: {.message}{"\n"}{end}{range .status.operationState.syncResult.resources[*]}result={.status} hookPhase={.hookPhase} {.kind}/{.namespace}/{.name}: {.message}{"\n"}{end}'
 ```
 
 Do not discard a result just because its apply status is `Synced`: its hook phase can
@@ -25,12 +28,14 @@ still be `Failed` or `Error`. Keep the two fields separate when selecting failur
 
 | Field / value | Meaning |
 |---|---|
-| `status: SyncFailed` | The apply was rejected. Read the API server or operation message. |
+| `status: SyncFailed` | A resource task failed, for example validation, apply or pruning. Read its message instead of inferring the failing action. |
 | `status: PruneSkipped` | Not a failure. The resource was left alone deliberately. |
 | `hookPhase: Failed` or `Error` | The resource or hook operation failed; inspect its message and live conditions. |
 
-Quote the message. Nearly every cause below is identifiable from its text alone, and
-the rest of this file is about what to confirm once you have read it.
+For `error setting app health`, read `health-unknown.md`; other comparison/spec errors
+use `sync-comparison-error.md`. `Shared resource found` can be a `FailOnSharedResource`
+policy gate before apply; requested termination is another operation-level cause.
+Quote the actual message and confirm its layer without inventing a failed object.
 
 For a failed hook, inspect its operation result and the Job/Pod conditions and events.
 A failed `PreSync` hook can prevent all normal resources from being created. Read
@@ -49,7 +54,7 @@ separate mechanisms.
 | `admission webhook ... denied the request` | A policy engine rejected it. The webhook name is in the message. | Section 6 |
 | `the server could not find the requested resource` | The CRD is not installed, or the API version was removed. | Section 7 |
 | `exceeded quota` | A ResourceQuota in the destination namespace. | Read the quota directly |
-| `namespaces "<ns>" not found` | The destination namespace does not exist and `CreateNamespace=true` is not set. | Section 7 |
+| `namespaces "<ns>" not found` | Namespace creation was absent, failed or not completed before this task. | Section 7 |
 
 ## 3. RBAC
 
@@ -152,9 +157,9 @@ and unrelated causes, so it does not establish this webhook's blast radius.
 A sync that fails on the first resource of the first wave is usually a missing
 prerequisite rather than a bad manifest.
 
-- **Namespace does not exist.** Argo CD does not create it unless
-  `CreateNamespace=true` is in `syncOptions`, or the namespace is in the manifests with
-  an earlier sync wave.
+- **Namespace does not exist.** Check `CreateNamespace=true` or a Namespace manifest
+  included in the sync, then its creation result. An earlier wave is not required:
+  Argo CD orders Namespace dependencies before consumers, including within one wave.
 - **CRD not installed.** Check whether its manifest is in the same sync; Argo CD then
   skips the missing-kind dry run automatically. If another controller supplies the
   CRD, verify that prerequisite and ordering. Skipping dry-run does not install it.
@@ -173,16 +178,21 @@ Whether this failure is self-correcting changes the recommendation entirely.
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
-'retry={.spec.syncPolicy.retry}{"\n"}'\
-'retryCount={.status.operationState.retryCount}{"\n"}'
+'configuredRetry={.spec.syncPolicy.retry}{"\n"}'\
+'effectiveRetry={.status.operationState.operation.retry}{"\n"}'\
+'phase={.status.operationState.phase} retryCount={.status.operationState.retryCount}{"\n"}'
 ```
+
+Use the operation's recorded retry policy for the attempt being diagnosed. Auto-sync
+supplies a limit of five retries when `spec.syncPolicy.retry` is absent;
+absence of that field does not mean zero retries. Manual operations can differ.
 
 After a failed operation with no retries remaining, auto-sync does not repeat the
 same revision and parameter combination. In Argo CD 3.4 the log is
 `Skipping auto-sync: failed previous sync attempt to <last-revisions> and will not retry for <desired-revisions>`;
 the condition message starts `Failed last sync attempt to`. The final log argument is
-a revision list, not a retry duration. With no `retry` policy, a terminal failure can
-therefore leave the app `OutOfSync` after a transient cause clears. A new desired
+a revision list, not a retry duration. Once the effective retries are exhausted, a
+terminal failure can leave the app `OutOfSync` after a transient cause clears. A new desired
 revision/parameters or a separately authorized manual sync is needed; triage does not
 run it. `selfHeal: true` does not retry this failed attempt by itself.
 
@@ -193,10 +203,9 @@ Source: [Argo CD 3.4 auto-sync decision](https://github.com/argoproj/argo-cd/blo
 
 ## 9. Report
 
-Name the resource, quote the API server or hook message, and say which of sections 3
-to 7 it falls into. Then state whether it will retry, because "this cleared an hour ago
-and the Application will stay broken until someone syncs it" is usually the most
-actionable sentence available.
+Name the failing resource when one is recorded, or the operation-level blocker. Quote
+its message and classify the evidenced cause. State whether retries remain or whether
+a terminal failure requires a changed desired input or separately authorized sync.
 
 If the cause is RBAC on an operator-managed instance, do not produce a Role or
 RoleBinding manifest. Hand off to `operator-rbac.md`.

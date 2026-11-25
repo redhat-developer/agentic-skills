@@ -8,9 +8,10 @@ finished yet. A `Degraded` Application may also contain absent resources: in Arg
 3.4 individual missing resources do not lower aggregate health. Check both the live
 health failure and independent missing-resource sync findings.
 
-`Degraded` with sync status `Synced` means the live state matches git. Drift is not the
-cause and syncing again changes nothing. Say that explicitly when you see it; it is the
-most common wrong recommendation for this status.
+`Synced` + `Degraded` means the configured comparison reports no actionable drift,
+while a health assessment reports failure. Diagnose that failure before proposing a
+sync; ignored differences and hook behavior mean `Synced` is not proof that another
+sync would change nothing.
 
 ## 1. Find the resource that produced the status
 
@@ -46,22 +47,30 @@ Do not stop at the deadline message. Report what the pods are doing.
 
 ### Pod-backed Degraded
 
-A Pod is `Degraded` in exactly these cases:
+For the built-in Pod check in 3.4, these are the Degraded cases (custom overrides
+and deletion handling take precedence):
 
 | Condition | Note |
 |---|---|
-| A container is waiting with a reason starting `Err`, or ending `Error` or `BackOff` | `CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, `CreateContainerConfigError`, `InvalidImageName`. **Only when `restartPolicy: Always`.** |
+| A container is waiting with a reason starting `Err`, or ending `Error` or `BackOff` | `CrashLoopBackOff`, `ImagePullBackOff`, `ErrImagePull`, `CreateContainerConfigError`. **Only when `restartPolicy: Always`.** |
 | Pod phase `Failed` | Message is the pod message, else a container's termination message, else `OOMKilled`, else the non-zero exit code |
-| Pod phase `Running`, not ready, and some container has a previous termination | A restart loop that has not yet reached backoff |
+| Pod phase `Running`, `restartPolicy: Always`, not ready, and an application container has a previous termination | Inspect the termination and current readiness evidence; this alone does not prove repeated crashing |
 
-Two exclusions that change the diagnosis:
+Exceptions that change the diagnosis:
 
 - **`Pending` without a qualifying container waiting error is `Progressing`.** An unschedulable pod, one blocked on
   an unbound PVC, or one waiting on quota does not produce `Degraded`. This is the Pod assessment; a Deployment can become `Degraded` after its deadline
   because its child pods remain Pending. Check which resource produced the status.
 - **Pods with `restartPolicy: OnFailure` or `Never` never take the waiting-reason
   path.** This is deliberate, so a hook pod with `ImagePullBackOff` does not fail its
-  sync prematurely. A Job's pod in `ImagePullBackOff` leaves the Job `Progressing`.
+  sync prematurely. A Job with no completion, failure or suspension condition remains
+  `Progressing`, even when a child Pod cannot pull its image.
+- **`InvalidImageName` does not match the waiting-reason predicate above.** A Pending
+  Pod with that reason remains `Progressing`; its event still establishes a workload fault.
+
+Newer builds may honor `argocd.argoproj.io/ignore-restart-policy: "true"` on non-hook
+Pods, using Always-policy checks for OnFailure/Never. This exception is absent in
+3.4. Verify installed support only if the annotation is present; do not add it as a repair.
 
 Get the evidence directly:
 
@@ -90,8 +99,8 @@ Common causes and the evidence that confirms each:
 ### Job: `Degraded`
 
 The Job has a `Failed` condition; the message is that condition's message. Inspect the
-pods it created, with `--previous` as above. A Job that is merely incomplete is
-`Progressing`, not `Degraded`.
+pods it created, with `--previous` as above. With no `Complete`, `Failed` or
+`Suspended` condition, the Job is `Progressing`; `Suspended=True` yields `Suspended`.
 
 ### A custom Lua script returned Degraded
 
@@ -106,9 +115,10 @@ $KCTL get cm argocd-cm -n "$NS" -o jsonpath='{.data.resource\.customizations\.he
 For core kinds use a kind-only key, such as `resource.customizations.health.Pod`.
 If no split key exists, inspect the relevant entry in legacy `resource.customizations`
 or the bundled check. Then compare the script against the resource evidence. Read the CR's own
-status and compare. A script asserting `Degraded` on a CR that looks healthy is a bug
-in the script. On an operator-managed instance, propose the override in the
-`ArgoCD` CR's `resourceHealthChecks`; a direct `argocd-cm` edit is reconciled away.
+status and compare with the kind's documented readiness contract. A mismatch may
+indicate an incorrect script or missing workload evidence; appearance alone is not
+proof. On an operator-managed instance, propose a verified override correction in
+the `ArgoCD` CR's `resourceHealthChecks`; a direct `argocd-cm` edit is reconciled away.
 
 ## 3. Check what the status is hiding
 

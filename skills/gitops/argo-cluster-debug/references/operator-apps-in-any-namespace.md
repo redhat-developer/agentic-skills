@@ -26,7 +26,7 @@ scope:
 |---|---|---|
 | Question | Where may `Application` **objects** live? | Where may **workloads** be deployed? |
 | Set by | `.spec.sourceNamespaces` on the `ArgoCD` CR | A label on the destination namespace |
-| Operator then | Grants the instance rights on `applications.argoproj.io` in that namespace, and labels it `argocd.argoproj.io/managed-by-cluster-argocd` | Creates the destination Role and RoleBinding for the controller and server |
+| Operator then | Configures watching and reconciles source-access RBAC/labels, subject to the existing namespace grants and ownership in step 2 | Creates the destination Role and RoleBinding for the controller and server |
 | Symptom when missing | The Application is ignored entirely — no status, not in the UI | The Application syncs and fails `forbidden` |
 
 If the Application has no current reconciliation evidence, investigate its watch
@@ -87,20 +87,41 @@ Glob patterns are allowed, so `team-*` covers `team-frontend`. Matching is again
 namespace the **Application object** lives in, not the destination namespace.
 
 For a confirmed cluster-scoped instance, verify the operator acted on the retained
-field. Inspect the generated objects rather than inferring success from the CR alone:
+field. Reuse namespace and binding evidence already collected; otherwise read both
+ownership labels and the binding targets together:
 
 ```bash
-# The operator labels each permitted namespace.
 $KCTL get ns "$APP_NS" \
-  -o jsonpath='{.metadata.labels.argocd\.argoproj\.io/managed-by-cluster-argocd}{"\n"}'
+  -o go-template='{{range $key, $value := .metadata.labels}}{{if or (eq $key "argocd.argoproj.io/managed-by") (eq $key "argocd.argoproj.io/managed-by-cluster-argocd")}}{{printf "%s=%q\n" $key $value}}{{end}}{{end}}deleting={{.metadata.deletionTimestamp}}{{"\n"}}'
 
-# And grants the instance rights on Application objects there.
-$KCTL get role,rolebinding -n "$APP_NS" | grep -i argocd
+$KCTL get rolebindings -n "$APP_NS" \
+  -o jsonpath='{range .items[*]}{.metadata.name} roleRef={.roleRef.kind}/{.roleRef.name} subjects={.subjects}{"\n"}{end}'
 ```
 
-The label value is the Argo CD **namespace**. Do not set this label by hand — the
-operator derives it from `sourceNamespaces` and will remove a hand-written one that
-does not correspond to a CR entry.
+Only present labels are printed; `=""` means a present but empty value. Both labels
+name an Argo CD **namespace**, not a CR name. Interpret the generated state before
+diagnosing a missing grant:
+
+- The inspected Red Hat GitOps Operator skips source namespaces with a
+  `deletionTimestamp`; the inspected upstream operator code lacks that guard.
+  Check installed behavior before attributing missing objects to reconciliation failure.
+
+- A nonempty `managed-by` label makes the operator skip separate source-access
+  Roles/RoleBindings. When it names this instance namespace, its destination grant
+  can already supply access to Application objects. A matching source label and its
+  separate objects may be cleaned up; their absence alone is not a fault.
+- If `managed-by` names another instance namespace, or the source label is present
+  with any value different from this instance namespace (including empty), source-object
+  generation is deliberately skipped. Report the conflicting or invalid owner;
+  do not overwrite either label or manufacture bindings.
+- Without those skip conditions, the operator normally generates the
+  `managed-by-cluster-argocd` label and source-access binding. The label is derived
+  from `sourceNamespaces`, not an input to set by hand.
+
+For bindings belonging to the intended instance, verify the subjects and referenced
+Role/ClusterRole rules for the needed Application access; reuse known cluster-level
+permissions. A label alone does not prove effective access. The watch configuration
+and AppProject gate remain necessary even when existing grants supply the RBAC.
 
 Use the discovered workload names/kinds and resolve referenced configuration when
 needed. Confirm the flag reached the workloads. The operator renders `sourceNamespaces` into
@@ -119,9 +140,10 @@ rewrites it on the next reconcile, which makes the fix appear to work and then r
 
 ### The CR is set and nothing was created
 
-Only after confirming supported cluster scope, if `sourceNamespaces` still contains
-the namespace but the label, RBAC and workload arguments are absent, investigate
-reconciliation. Repeating the field or manufacturing generated objects does not
+Only after confirming supported cluster scope and excluding the ownership/grant skip
+conditions above, investigate reconciliation when the retained `sourceNamespaces`
+entry lacks expected generated objects or workload arguments. Repeating the field
+or manufacturing generated objects does not
 explain the failure. First read the field back: an operator version that does not
 support it may have its unknown field pruned by the API server.
 
@@ -183,13 +205,18 @@ argocd app sync <application> --app-namespace <namespace>
 A plain `argocd app get <name>` looks only in the instance namespace and reports the
 Application as not found, which looks like the feature is still broken.
 
-This also changes RBAC policy strings. With `sourceNamespaces` in play, the object in
-an `applications` policy rule becomes `<project>/<namespace>/<application>` instead of
-`<project>/<application>`. Existing two-part rules stop matching the Applications that
-moved, so a working RBAC policy silently narrows at the moment this feature is enabled.
-Nothing logs an error, because a non-match is not a failure. The fix is
-`.spec.rbac.policy` on the `ArgoCD` CR — the operator renders `argocd-rbac-cm` from it,
-so a direct ConfigMap edit is reverted on the next reconcile.
+For Applications outside the instance namespace, the RBAC object is
+`<project>/<namespace>/<application>`; Applications in the instance namespace retain
+`<project>/<application>`. Inspect the effective policy and `policy.matchMode` before
+attributing a UI/API denial to the move. An exact `team/myapp` rule will not match
+`team/tenant/myapp`, but in the default glob mode `team/*` still matches both: `/` is
+not a separator. Such wildcard grants may be broader than intended, not broken.
+
+Recommend a policy change only for a demonstrated mismatch or unintended grant. On
+operator-managed instances, use the authoritative `.spec.rbac.policy` input for
+policy rules. The operator overwrites `argocd-rbac-cm` policy when that CR field is
+set; an unset field does not guarantee reversion. Keep changes in the supported
+CR/Git input rather than relying on direct ConfigMap edits to persist.
 
 ## 5. Report
 
@@ -202,9 +229,9 @@ recommend the `managed-by-cluster-argocd` label, a Role, a RoleBinding, or an ed
 `--application-namespaces`. All four are operator-reconciled, and all four will be
 reverted.
 
-Finally, inspect destination authorization separately. Fixing source watching does
-not prove the controller can create the requested workload kind; `operator-rbac.md`
-distinguishes cluster-scoped rights, namespace grants, remote targets and project policy.
+Fixing source watching does not prove destination permissions. Read `operator-rbac.md`
+only for independently observed destination authorization failures; otherwise close
+the verified watch branch without an additional permission survey.
 
 Version boundary: the linked operator v0.18.0 source establishes that snapshot's
 scope gate; verify the installed product/operator schema and effective settings. A

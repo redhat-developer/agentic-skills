@@ -102,8 +102,10 @@ $KCTL get events -n <ns> --field-selector involvedObject.name=<resource-name> --
 
 Candidates:
 
-- Someone or something deleted it outside Argo CD. With `selfHeal: false` Argo CD
-  reports the drift and leaves it missing.
+- Someone or something deleted it outside Argo CD. With self-heal disabled, live
+  deletion alone does not trigger restoration; another permitted sync or changed
+  desired revision may still recreate it. Reuse the effective automation policy
+  and operation evidence before predicting whether it will remain missing.
 - An owner was deleted and garbage collection removed this object with it.
 - A namespace is terminating.
 - Another Application manages the same resource and pruned it. Two Applications

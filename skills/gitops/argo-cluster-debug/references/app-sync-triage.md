@@ -4,11 +4,12 @@ Load through Workflow 2b in `../SKILL.md`. Reuse the installation and instance e
 already gathered. File paths below are relative to this reference directory.
 
 Sync status, not health status. An Application can be `Synced` and `Degraded` at the
-same time — the live state matches git and the workload is still broken — and it can be
+same time — the configured comparison finds no actionable drift, but health fails — and it can be
 `OutOfSync` and `Healthy`, where everything is running and simply is not what git says.
 A successful sync can address drift; it does not establish workload health.
 
-For a workload-only failure with no sync blocker, use `app-health-triage.md`.
+For a known workload failure, use its health leaf from `../SKILL.md`; use
+`app-health-triage.md` only when status selection is unresolved.
 For mixed symptoms, investigate comparison and operation errors first, then follow
 workload blockers into health triage and operator-owned permission failures into
 `operator-rbac.md` (destination authorization) or
@@ -78,15 +79,17 @@ finish any outstanding health or operator investigation before the final report.
 
 | Check | State | Reference |
 |---|---|---|
-| 1 | Sync status is `Unknown`, or there is a `ComparisonError` or `InvalidSpecError` condition | `sync-comparison-error.md` |
+| 0 | `ComparisonError` message starts `error setting app health` | `health-unknown.md`; preserve the separately computed sync status |
+| 1 | Sync status is `Unknown`, or another `ComparisonError` or `InvalidSpecError` needs classification | `sync-comparison-error.md` |
 | 2 | `operationState.phase` is `Running` or `Terminating` and has been for a while | `sync-stuck.md` |
 | 3 | `operationState.phase` is `Failed` or `Error` | `sync-failed.md` |
 | 4 | Sync status is `OutOfSync` and no operation is running | `sync-outofsync.md` |
 | 5 | Sync status is `Synced` but the cluster does not match what you expect | `sync-false-synced.md` |
 
-Prioritize comparison errors before trusting drift counts or cached resource lists.
-They do not invalidate independently observed live failures or operation evidence;
-retain those findings and establish their freshness.
+Render or destination-read failures limit drift conclusions. A health-evaluation
+`ComparisonError` is emitted after sync status is computed and does not itself invalidate
+the diff, though the condition can prevent a sync operation. Route by its message and
+preserve independently observed comparison, health and operation evidence with timestamps.
 
 If the Application is `Synced`, the last operation `Succeeded`, and the cluster matches
 the intended state, close the sync branch. Continue any outstanding health or operator

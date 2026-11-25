@@ -15,6 +15,8 @@ compatibility: Requires oc or kubectl; optionally argocd and kubectl-argo-rollou
 
 Diagnose Argo CD and Argo Rollouts using read-only evidence. Paths below are relative
 to this skill; paths inside references are relative to the containing document.
+Argo CD 3.4 is the health/sync baseline; newer-version exceptions apply only when
+relevant to the installed build.
 
 ## Read before diagnosing
 
@@ -35,10 +37,11 @@ unresolved status selection or aggregation questions.
 |---|---|
 | 2c: Operator-managed controller cannot create/update a destination resource (`forbidden`, API authorization denial) | `references/operator-rbac.md` |
 | 2c: Ignored Application, empty/stale status outside watch scope, source-namespace project rejection, UI access after a move | `references/operator-apps-in-any-namespace.md` |
-| 2b: `ComparisonError`, `InvalidSpecError`, sync `Unknown`, repo auth/render error | `references/sync-comparison-error.md` |
+| 2a: `ComparisonError` message starts `error setting app health` | `references/health-unknown.md` |
+| 2b: Other `ComparisonError`, `InvalidSpecError`, sync `Unknown`, repo auth/render error | `references/sync-comparison-error.md` |
 | 2b: Operation stuck `Running` / `Terminating` | `references/sync-stuck.md` |
 | 2b: Operation `Failed` / `Error`, without a more specific operator cause above | `references/sync-failed.md` |
-| 2b: `OutOfSync`, no operation running or comparison error | `references/sync-outofsync.md` |
+| 2b: `OutOfSync`, no operation running or comparison failure | `references/sync-outofsync.md` |
 | 2b: `Synced` but unexpected live state | `references/sync-false-synced.md` |
 | 2a: Health `Degraded` | `references/health-degraded.md` |
 | 2a: Sustained health `Progressing` | `references/health-progressing.md` |
@@ -49,7 +52,9 @@ unresolved status selection or aggregation questions.
 
 Start with the current causal error: a controller authorization denial can explain
 both `OutOfSync` and `Missing`, while Git HTTP 401 belongs to comparison triage.
-Read both relevant procedures for independent health and sync/operator faults.
+`ComparisonError` alone does not prove the diff failed: route by its message and
+retain observed sync/operation evidence. Read both relevant procedures for independent
+health and sync/operator faults.
 `Synced` + `Degraded` is a health failure; `OutOfSync` + `Degraded` may need both
 branches. Stop a branch once its cause is verified; continue outstanding independent
 findings. Do not follow it with a generic survey.

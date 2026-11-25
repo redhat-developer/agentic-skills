@@ -4,10 +4,12 @@
 
 # Comparison failed
 
-Sync `Unknown` means comparison did not produce a reliable diff. Desired-state
-rendering or destination reads may have failed. Use the condition to identify the
-layer; cached resource lists and drift counts need freshness checks. Independently
-observed workload failures remain valid evidence and require their health procedure.
+Sync `Unknown` means comparison did not produce a reliable diff. A `ComparisonError`
+condition alone does not establish that: health evaluation can emit it after the diff
+is computed. Read the message to identify the layer. For `error setting app health`,
+read `health-unknown.md` and preserve the independently computed sync status and diff;
+the condition can still prevent a sync operation. Render/read failures require freshness
+checks before trusting cached resource lists. Continue independent workload findings.
 
 ## 1. Read the condition, not the status
 
@@ -20,7 +22,7 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
 
 | Condition | What failed |
 |---|---|
-| `ComparisonError` | The desired state could not be built, or the destination could not be read. Repo, revision, render, or cluster. |
+| `ComparisonError` | Inspect the message: source/render/destination comparison failure, or a health-evaluation error after comparison. `error setting app health` routes to `health-unknown.md`. |
 | `InvalidSpecError` | Validation failed: project/source/destination policy or existence, repository access, or another spec validation error. Read the message. |
 | `UnknownError` | Everything else. Read the message verbatim. |
 
@@ -121,7 +123,7 @@ $KCTL logs "$REPO_POD" -n "$NS" -c "$REPO_CONTAINER" --since=15m --tail=200 | gr
 |---|---|
 | Helm | Match chart version (`targetRevision`), parameters, values schema and dependencies. Repo-server can build dependencies; an absent local `charts/` directory alone is not proof of failure. Inspect the actual dependency fetch/build error. Check chart-relative `valueFiles` or `$ref` paths and `ignoreMissingValueFiles`: absent optional files are skipped when true. |
 | Kustomize | Check missing resources/bases, patch targets, name/selector transformations, remote-base access, and the configured Kustomize version/build options. Reproduce with matching inputs/tool version only when needed. |
-| Plugin | The plugin sidecar is running and its name matches `.spec.source.plugin.name`. A renamed or removed plugin fails every Application using it. |
+| Plugin | Confirm sidecar readiness separately from plugin identity. If the implicated source specifies `plugin.name`, match the plugin configuration's `metadata.name`, suffixed with `-<spec.version>` when versioned. If name is omitted, verify discovery matches the source; a container-name mismatch alone is not a fault. |
 
 Source: [3.4 Helm values](https://argo-cd.readthedocs.io/en/release-3.4/user-guide/helm/).
 
@@ -180,7 +182,7 @@ $KCTL get appproject "$PROJ" -n "$NS" -o jsonpath=''\
 |---|---|
 | `Application referencing project <p> which does not exist` | The AppProject is absent, or lives in a different namespace from the instance. |
 | `application destination ... is not permitted in project` | The destination server or namespace is not in `spec.destinations`. Both fields are matched, and `*` in one does not cover the other. |
-| `application repo ... is not permitted in project` | `sourceRepos` does not list the repo. Matching is glob, and is literal about the `.git` suffix. |
+| `application repo ... is not permitted in project` | Evaluate `sourceRepos` allow/deny globs after URL normalization. Argo CD normalizes both the source and patterns, including removing a trailing `.git`; a suffix-only difference does not establish rejection. |
 | `application '<name>' in namespace '<ns>' is not permitted to use project '<project>'` | The AppProject does not permit this Application's source namespace. Check its `spec.sourceNamespaces`; changing the instance's watch configuration does not fix project permission. See `operator-apps-in-any-namespace.md`. |
 
 The last message is Argo CD's
@@ -195,12 +197,13 @@ can be true. Fixing one leaves the other. Say which you checked.
 
 ## 6. Report
 
-Name which of the four it is — repo, render, destination, or spec policy — and quote
-the condition message. State the blast radius you measured, because "only this
+Name the evidenced layer — repo, render, destination, spec policy or health evaluation —
+and quote the condition message. State the blast radius you measured, because "only this
 Application" and "every Application on this instance" lead to different fixes even for
 an identical message.
 
-State which comparison outputs could not be trusted or refreshed. Do not infer a
-current resource count from a failed/stale comparison. Preserve independently verified
+State which comparison outputs could not be trusted or refreshed; do not label a
+health-only error as a failed diff. Do not infer a current resource count from a
+failed/stale comparison. Preserve independently verified
 live health, operation results and timestamps; report each independent cause rather
 than discarding health evidence because comparison failed.

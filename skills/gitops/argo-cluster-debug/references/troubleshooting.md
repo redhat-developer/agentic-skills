@@ -11,6 +11,7 @@ Read the direct procedure; do not run a second generic sync checklist:
 
 | Signal | Reference |
 |---|---|
+| `ComparisonError` with `error setting app health` | `health-unknown.md` |
 | Repository authentication, manifest generation, invalid spec, comparison unavailable | `sync-comparison-error.md` |
 | Destination controller authorization | `operator-rbac.md` |
 | Ignored Application / source-namespace access | `operator-apps-in-any-namespace.md` |
@@ -105,10 +106,10 @@ kubectl get applications.argoproj.io -n "$NS" -o jsonpath='{range .items[*]}{.me
 ```bash
 # Check requeueAfterSeconds
 kubectl get applicationset <name> -n "$NS" -o jsonpath='{.spec.generators[*].scmProvider.requeueAfterSeconds}'
-
-# Force reconciliation by touching the ApplicationSet
-kubectl annotate applicationset <name> -n "$NS" refreshed-at="$(date +%s)" --overwrite
 ```
+
+Compare generator inputs, conditions and recent controller logs; do not force a
+refresh by mutating the ApplicationSet during diagnosis.
 
 ### Progressive sync stuck
 

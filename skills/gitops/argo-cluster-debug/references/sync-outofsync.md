@@ -1,8 +1,10 @@
 # OutOfSync
 
 Desired and live state differ. Reuse the current-run Application snapshot and inspect
-only missing evidence. Comparison errors belong to `sync-comparison-error.md`; a
-running operation to `sync-stuck.md`. Independent health faults keep their own branch.
+only missing evidence. An `error setting app health` condition routes directly to
+`health-unknown.md` and does not invalidate a separately computed diff. Other
+comparison errors use `sync-comparison-error.md`; a running operation uses
+`sync-stuck.md`. Independent health faults keep their own branch.
 
 ## 1. Effective automation and last operation
 

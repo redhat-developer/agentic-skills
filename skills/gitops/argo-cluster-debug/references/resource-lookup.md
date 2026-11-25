@@ -1,64 +1,40 @@
 # When the named resource does not exist
 
-The most common real debugging session does not start from a broken resource — it starts
-from a name that does not resolve. Typo, wrong namespace, wrong cluster context, wrong
-Argo CD instance, or already deleted. **Establish this before running any workflow**, or
-you will produce a confident analysis of nothing.
+Verify the requested cluster context, API resource, exact name and namespace before
+troubleshooting. Reuse established context, candidate namespaces and instance evidence;
+never silently substitute another object.
 
-Reuse the established cluster context and candidate namespaces. Verify the fully
-qualified resource name and exact requested identity first. Only widen the search
-when those reads succeed but do not locate it:
+## Resolve the resource type
+
+Use `applications.argoproj.io` for Argo CD Applications and
+`subscriptions.operators.coreos.com` for OLM Subscriptions. Bare `application` or
+`subscription` can resolve to another API group on ACM/MCE clusters. Resolution uses
+discovery priorities, not a guaranteed alphabetical choice. Check the group named in
+the error before interpreting `NotFound`.
+
+For an unfamiliar kind, inspect accessible API discovery for its group, plural name,
+kind and short names. Matching only the first `api-resources` column cannot rule out
+ambiguity: that column is the plural resource name. A denied discovery read leaves
+the type unresolved, not absent. Reuse discovery already collected.
+
+## Locate the exact object
+
+Start in the requested namespace with the fully qualified resource type. Only widen
+a successful empty/NotFound lookup if the current-run inventory does not cover it:
 
 ```bash
-# Optional wider lookup; do not repeat when the current-run inventory already covers it.
 $KCTL get applications.argoproj.io -A --field-selector metadata.name="$APP" \
   -o custom-columns=NS:.metadata.namespace,NAME:.metadata.name
-# If deletion is plausible, start in the expected namespace and preserve read errors.
+# Only if deletion is plausible; absence of events does not prove deletion.
 $KCTL get events -n "$APP_NS" --field-selector involvedObject.name="$APP" \
   --sort-by=.lastTimestamp | tail -5
 ```
 
-A denied search leaves the target unresolved; it does not show absence. A successful
-empty exact-name search can justify checking likely typos in accessible candidate
-namespaces. If context or ownership is still unknown, use Workflow 1 in
-`debug-workflows.md`; do not rediscover it merely because a handoff occurred.
+Preserve read errors. A denied search leaves the object unresolved; it does not prove
+absence. After a successful empty exact-name search, check likely typos in accessible
+candidate namespaces. If context or ownership remains unknown, use Workflow 1 in
+`debug-workflows.md`; otherwise do not repeat installation discovery.
 
-**Gotcha — the short form can resolve to the wrong CRD.** On clusters running Open
-Cluster Management (common on OpenShift), `kubectl get application <name>` resolves to
-`applications.app.k8s.io`, not Argo CD, and returns a `NotFound` for the *wrong kind*:
-
-```
-Error from server (NotFound): applications.app.k8s.io "<name>" not found
-```
-
-That reads as "your Application is gone" when it may exist perfectly well. Always write
-`applications.argoproj.io` explicitly.
-
-**This is not limited to `application`.** Any short name served by more than one API
-group resolves to whichever group sorts first, and a miss is reported as `NotFound` for
-that *other* kind — which reads as "it does not exist" rather than "you asked the wrong
-API". On a cluster running ACM/MCE, `subscription` is the other common one:
-
-```bash
-# Two groups serve `subscriptions` on an ACM cluster:
-#   apps.open-cluster-management.io/v1   <- the bare name hits this
-#   operators.coreos.com/v1alpha1        <- OLM's, the one you almost always want
-$KCTL get subscription -A                        # "No resources found"  (WRONG kind)
-$KCTL get subscriptions.operators.coreos.com -A  # the operator Subscriptions
-```
-
-Observed: a bare `get subscription -A` returned "No resources found" on a cluster whose
-OLM Subscription was present and healthy, which led to a confident — and wrong — root
-cause of "the Subscription was deleted".
-
-**Before trusting any empty result, check whether the short name is ambiguous:**
-
-```bash
-$KCTL api-resources | awk '$1=="<shortname>"'   # more than one row == ambiguous
-```
-
-An empty result from a bare short name is not evidence of absence.
-
-**Then report it as a finding, not a failure.** State what you searched and what exists.
-If you demonstrate the method on a different resource, say so in the heading — never let
-a substitute read as the user's resource.
+Report the identity and namespaces searched, what was found, and unavailable checks.
+Do not infer deletion from an empty lookup alone. If demonstrating checks on a different
+resource, label it explicitly as a demonstration, not the requested diagnosis.

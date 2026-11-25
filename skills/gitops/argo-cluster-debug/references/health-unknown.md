@@ -3,9 +3,11 @@
 
 # Unknown
 
-Health could not be computed. This is almost always a broken **health check**, not a
-broken workload — and it is the single most misdiagnosed Argo CD status, because the
-natural reading ("something is wrong with my app") is usually false.
+Argo CD has no established healthy/unhealthy verdict. An assessment may have failed,
+returned `Unknown` deliberately, or the controller may lack comparison evidence.
+Distinguish those cases from the actual condition message; do not assume a Lua defect.
+For example, the built-in Pod/PVC checks can return `Unknown` without an evaluation
+error when their phase is unrecognized or not yet populated.
 
 ## Why this status is special
 
@@ -13,19 +15,20 @@ natural reading ("something is wrong with my app") is usually false.
 
 `Healthy` → `Suspended` → `Progressing` → `Missing` → `Degraded` → `Unknown`
 
-So one resource whose health check errors makes the entire Application `Unknown` and
-masks every other problem in it. An Application can be `Unknown` while a Deployment
+One resource whose assessment counts in the rollup can therefore make the Application
+`Unknown`, masking lower-ranked failures in its aggregate status. An Application can be `Unknown` while a Deployment
 inside it is in `CrashLoopBackOff`; the crash loop is invisible at app level.
 
 Two implications for triage:
 
-1. Identify the failed assessment and recommend its owning-input correction; do not
-   mutate it during diagnosis or wait for remediation to investigate other faults.
+1. Identify why the verdict is `Unknown`; recommend a correction only for a verified
+   fault. Continue independent findings without waiting for remediation.
 2. Review the complete successful resource-health snapshot for masked faults. Reuse it
    rather than fetching it again merely because the investigation changed branches.
 
 A child `Application` that is `Unknown` is excluded from its parent in an app-of-apps,
-so a parent reporting `Unknown` has its own unknown resource.
+so that child alone does not explain the parent's `Unknown`. The parent may have
+another unknown resource or a comparison-level failure.
 
 ## 1. Find the resource and read its message
 
@@ -36,23 +39,28 @@ an empty inline field is not an assessment.
 
 **The health message carries the error text.** When a custom Lua script fails, Argo CD
 sets the status to `Unknown` and puts the script's error in the message — a Lua
-runtime error, a nil index, a type error. That message is the diagnosis; quote it.
+runtime error, a nil index, a type error. Quote it and identify the failing expression
+and missing/mistyped field before proposing a correction.
 
-If the Application itself is `Unknown` but no individual resource is, read the
-app-level message:
+Reuse Application conditions and health from the existing snapshot. If unavailable,
+read them together; aggregate `.status.health.message` alone may omit assessment
+errors, which are recorded in `.status.conditions`:
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{.status.health.status}: {.status.health.message}{"\n"}'
+  -o jsonpath='health={.status.health.status}: {.status.health.message}{"\n"}{range .status.conditions[*]}condition={.type}: {.message}{"\n"}{end}'
 ```
 
-A message of the form `see application-controller logs for N other errors; most recent
-error was: ...` records multiple assessment errors. Inspect their actual messages;
-separate overrides can fail independently, so this alone does not prove a controller fault.
+`ComparisonError` with `error setting app health: ...` belongs to this assessment
+procedure; it does not establish a manifest-rendering or repository failure. Other
+comparison messages go to `sync-comparison-error.md` when independently present.
+Retain the current sync status and operation evidence; do not reclassify them solely
+from the condition type. A failed comparison can yield aggregate `Unknown` without
+any individual resource assessment.
 
 ## 2. Custom health script errors
 
-The most common cause. Check whether an override exists for the kind:
+When the message identifies an assessment error, check the applicable override:
 
 ```bash
 # Example key; substitute the implicated group/kind.
@@ -64,11 +72,12 @@ key is kind-only, for example `resource.customizations.health.Pod` (no underscor
 If the split key is absent, inspect the relevant legacy `resource.customizations`
 entry or bundled script; absence of a split key is not proof no assessment exists.
 
-A script errors rather than returning a verdict when it indexes a field that does not
-exist on this particular CR — a status subresource that has not been populated yet, a
-conditions array that is absent on a freshly created object, or an API version change
-that moved a field. The giveaway is that the same kind is healthy elsewhere and only
-the new or just-created instances are `Unknown`.
+Nested indexing or iteration over absent/mistyped fields can fail: status may not
+exist yet, conditions may be absent, or an API version may have changed the schema.
+Compare the actual failing expression and object; other healthy instances of the
+same kind are supporting evidence, not proof of this cause. If the script returns
+`Unknown` normally, investigate the condition it is waiting for rather than treating
+the return value as a Lua exception.
 
 Compare the script's assumptions against the live object:
 
@@ -76,15 +85,18 @@ Compare the script's assumptions against the live object:
 $KCTL get <kind> <name> -n <ns> -o jsonpath='{.status}'
 ```
 
-The remediation lives in `argocd-cm`, not in the workload. Note that editing
-`argocd-cm` on an operator-managed instance will be reverted — the override belongs in
-the `ArgoCD` CR's `resourceHealthChecks`. Say so rather than suggesting a direct edit.
+A verified override defect belongs in its authoritative configuration. On an
+operator-managed instance, use the supported `ArgoCD.spec.resourceHealthChecks` input
+through Git; a direct generated `argocd-cm` edit can be reverted. If the assessment
+correctly reports missing workload/controller status, repair that underlying cause.
 
 ## 3. The controller cannot reach the destination cluster
 
-If every resource in an Application is `Unknown`, or whole Applications pointing at one
-destination are `Unknown`, the cluster connection is the suspect rather than any
-script.
+When conditions identify cluster connectivity, credentials or cache errors, correlate
+other Applications using that destination. Shared failures can implicate the
+connection, but can also come from a shared override; scope alone does not decide.
+Reuse conditions and destination evidence already collected; request only missing
+identity fields or cluster-secret server metadata below.
 
 ```bash
 $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
@@ -93,14 +105,12 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
 $KCTL get secrets -n "$NS" -l argocd.argoproj.io/secret-type=cluster \
   -o jsonpath='{range .items[*]}{.metadata.name} {.data.server}{"\n"}{end}'
 
-$KCTL get applications.argoproj.io "$APP" -n "$APP_NS" \
-  -o jsonpath='{range .status.conditions[*]}{.type}: {.message}{"\n"}{end}'
 ```
 
-An expired or rotated cluster credential shows up as `ComparisonError` or
-`UnknownError` conditions on every Application using that destination. Check whether
-the blast radius is one Application or all of them before diagnosing — that one
-observation separates a script bug from a credential problem.
+Use the actual connection/authentication error in conditions or current controller
+logs. An expired credential can affect Applications using that destination, but
+reconciliation timing and cached state vary. Do not infer credential failure from
+`Unknown` alone or retrieve cluster credential values.
 
 ## 4. The kind disappeared
 
@@ -118,8 +128,9 @@ on every reconcile.
 
 ## 5. Controller health
 
-Assessment also fails when the application controller is itself unhealthy — out of
-memory, wedged, or failing to build the cluster cache.
+Current controller or cache failures can prevent fresh assessment and leave stale
+status. Establish readiness, restart timing and error evidence before attributing an
+`Unknown` status to controller failure.
 
 ```bash
 $KCTL get pods -n "$NS" -l "$CONTROLLER_SELECTOR"
@@ -127,7 +138,10 @@ $KCTL logs "$CONTROLLER_POD" -n "$NS" -c "$CONTROLLER_CONTAINER" --since=15m --t
 ```
 
 The log line `failed to get resource health for "<Kind>" with name "<name>" in
-namespace "<ns>"` is emitted for exactly this case and names the resource directly.
+namespace "<ns>"` wraps assessment errors, including invalid Lua; it is **not** evidence
+of controller OOM or wedging by itself. Read its nested cause. See
+[assessment error handling](https://github.com/argoproj/argo-cd/blob/release-3.4/controller/health.go) and
+[Application condition handling](https://github.com/argoproj/argo-cd/blob/release-3.4/controller/state.go).
 
 If current controller failure explains the affected shard/instances, report that
 scope without dropping independently observed workload faults. Historical restarts
@@ -136,8 +150,8 @@ covers controller sizing.
 
 ## 6. Report
 
-Name which of the five it is and quote the error text you found. Then state explicitly
-what the `Unknown` was hiding:
+State the verified cause or remaining uncertainty and quote the supporting message.
+Then state which independent faults were observed:
 
 Review the successful `resource-health.md` snapshot for explicit unhealthy states
 other than `Unknown`. Verify any missing live objects and preserve independent sync

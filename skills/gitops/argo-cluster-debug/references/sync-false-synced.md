@@ -116,16 +116,16 @@ Causes that silently drop a resource from the desired state:
 - A Kustomize `resources:` list that does not include the file. An orphaned file in the
   directory is never rendered.
 - A path change, where the Application still points at the old `spec.source.path`.
-- A `resourceExclusions` entry in `argocd-cm` or `.spec.resourceExclusions` on the CR,
-  which removes a whole kind from Argo CD's view cluster-wide.
+- A `resource.exclusions` entry in `argocd-cm` or `.spec.resourceExclusions` on the CR.
+  Match its API groups, kinds and cluster URL patterns against the actual destination.
 
 ```bash
 $KCTL get cm argocd-cm -n "$NS" -o jsonpath='{.data.resource\.exclusions}{"\n"}'
 ```
 
-`resourceExclusions` is the one that surprises people, because it is instance-wide and
-usually set by somebody else for performance reasons. An excluded kind is invisible to
-every Application on the instance.
+Exclusions are configured at instance scope, but a rule can select particular clusters.
+Only matching kinds on matching destinations are excluded; do not infer that every
+Application on the instance is affected.
 
 ## 5. Did someone change the cluster directly?
 

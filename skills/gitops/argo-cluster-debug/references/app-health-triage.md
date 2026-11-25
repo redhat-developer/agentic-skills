@@ -4,14 +4,15 @@ Load through Workflow 2a in `../SKILL.md`. Reuse the installation and instance e
 already gathered. File paths below are relative to this reference directory.
 
 Health status, not sync status. An Application can be `Synced` and `Degraded` at the
-same time: the live state matches git and the workload is still broken. When that is
-what you see, drift is not the cause and reconciling again will not help.
+same time: the comparison found no actionable drift under the configured diff rules, while a
+health check reports failure. Diagnose that failure; `Synced` alone does not prove
+every live field matches Git or establish that another sync is a remedy.
 
 This workflow is read-only. Diagnose and report. Do not apply changes.
 
 ## How Argo CD computes health
 
-Resolution order for a live resource:
+Resolution order for a live resource in Argo CD 3.4:
 
 1. If the object has a `deletionTimestamp` and no hook finalizer — `Progressing`,
    message `Pending deletion`. Nothing else is evaluated.
@@ -21,8 +22,12 @@ Resolution order for a live resource:
 3. The built-in check for the GVK — Deployment, StatefulSet, DaemonSet, ReplicaSet,
    Pod, Job, Service, Ingress, PVC, HPA and APIService; bundled Lua checks cover
    additional kinds. A child Application may require an explicit custom assessment.
-4. No check for the GVK — no health status at all. The resource is skipped. A CRD that
-   Argo CD does not know how to assess never makes an Application unhealthy.
+4. No check for a non-terminating resource — no health status at all; it is skipped.
+   An unassessed kind alone does not make the Application unhealthy.
+
+Newer builds may assess before deletion and support custom `deletionMessage`;
+errors can return `Unknown` instead of the default deletion status. Check installed
+support only when the observed deletion assessment differs from the 3.4 rule.
 
 ### Rollup to the Application (Argo CD 3.4)
 
@@ -33,8 +38,8 @@ resources that count. Worst is this order, best to worst:
 
 Two consequences that drive triage:
 
-- **`Unknown` is the worst status, not a mild one.** One resource with a broken health
-  check makes the whole Application `Unknown` and hides every other problem in it.
+- **`Unknown` is the worst status, not a mild one.** A resource whose `Unknown` assessment
+  counts in the rollup can mask lower-ranked failures in the aggregate.
 - **Absent live resources do not individually lower Application health.** An app
   with a live degraded Deployment and an absent Service reports `Degraded`; keep
   the missing Service as a separate sync finding. When non-hook resources are
@@ -81,7 +86,7 @@ not any outstanding investigation of other signals.
 | `Degraded` | `health-degraded.md` | A health check ran and reported failure |
 | `Progressing` | `health-progressing.md` | Not healthy yet, still allowed to become healthy. Sustained is the symptom |
 | `Missing` | `health-missing.md` | Expected resources have no live objects in the 3.4 aggregate, or a live custom check explicitly returns Missing |
-| `Unknown` | `health-unknown.md` | Health could not be computed. Usually a broken check, not a broken workload |
+| `Unknown` | `health-unknown.md` | Assessment returned `Unknown` or failed; inspect its message and Application conditions |
 
 If the Application is `Healthy` or intentionally `Suspended`, do not invent an
 aggregate-health fault. Independently reported resource failures still need checking. Continue any outstanding sync or operator investigation;
@@ -91,17 +96,10 @@ When more than one resource is unhealthy, the Application status comes from the 
 Diagnose that one, and list the others as additional findings rather than merging them
 into one cause.
 
-## Grace periods lie about Deployments
+## Deployment deadlines
 
-An automated trigger that fires after a few minutes of sustained unhealthy status will
-catch a failing Deployment while it is still `Progressing`, not `Degraded`. A
-Deployment only becomes `Degraded` when its `Progressing` condition reaches
-`ProgressDeadlineExceeded`, and `progressDeadlineSeconds` defaults to 600 — ten
-minutes. So for the first ten minutes, a Deployment whose pods cannot start and a
-Deployment that is rolling out normally report the same health status.
-
-Never read `Progressing` as "it is still working." Go to `health-progressing.md`
-and check the pods.
+`Progressing` does not establish progress, including before a Deployment's deadline.
+Read `health-progressing.md` and inspect the workload evidence.
 
 ## Output
 

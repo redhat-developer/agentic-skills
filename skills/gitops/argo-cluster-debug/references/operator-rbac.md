@@ -138,7 +138,8 @@ Record:
   none, including `openshift-gitops`. Confirm against the ClusterRole below rather
   than the variable alone.
 - `ALLOW_NAMESPACE_MANAGEMENT_IN_NAMESPACE_SCOPED_INSTANCES` — must be `"true"` or
-  `NamespaceManagement` is inert and the operator cleans the related RBAC up.
+  the handshake grants no access and its RBAC may be cleaned up. An independent
+  `managed-by` grant can remain; inspect both paths.
 - `CONTROLLER_CLUSTER_ROLE` and `SERVER_CLUSTER_ROLE` — when set, expect a
   RoleBinding and no default Role.
 
@@ -241,24 +242,27 @@ $KCTL get namespacemanagements.argoproj.io -n "$DEST" \
   -o jsonpath='{range .items[*]}{.metadata.name} managedBy={.spec.managedBy} {.status.conditions}{"\n"}{end}'
 ```
 
-The operator writes a condition on every `NamespaceManagement` whose `spec.managedBy`
-matches an instance namespace, and only while the feature is enabled. Read it as:
+Read the actual condition message, not just its reason. Newer operators also report
+when the feature is disabled; older versions can leave that case without a condition.
+Correlate the result with current inputs and the Deployment environment:
 
 | `status.conditions` | What it means |
 |---------------------|----------------|
-| Absent | Evaluation is unverified. Check freshness and whether `ALLOW_NAMESPACE_MANAGEMENT_IN_NAMESPACE_SCOPED_INSTANCES` is not `"true"`, or `spec.managedBy` names a namespace with no Argo CD instance, or the `ArgoCD` CR is not reconciling at all. Check the Deployment environment from step 1 first. |
-| `reason: ErrorOccurred`, message `Namespace <ns> is not permitted for management by ArgoCD instance <ns> based on NamespaceManagement rules` | The feature is on and the request reached the operator. `ArgoCD.spec.namespaceManagement` has no entry matching this namespace with `allowManagedBy: true`. The fix is on the `ArgoCD` CR, not the tenant CR. |
+| Absent | Evaluation is unverified. Check the effective feature setting, whether `spec.managedBy` identifies an instance namespace, and reconciliation evidence; absence alone does not establish the cause. |
+| `ErrorOccurred`, message says `NamespaceManagement is disabled` | Check the effective feature environment. Do not change the ArgoCD allow-list to fix a disabled feature. |
+| `ErrorOccurred`, message says the namespace is not permitted | Inspect all matching `ArgoCD.spec.namespaceManagement` entries. Newer messages distinguish no matching entry from `allowManagedBy: false`; older messages say only that management rules reject the namespace. Establish the missing allow rule from current fields, then recommend that ArgoCD input. |
 | `reason: Success` | The operator reported success. Correlate with current inputs, feature enablement and generated bindings/rules; stale success or a custom ClusterRole path does not prove a missing default Role is an outage. |
 
 Quote the condition and its freshness, or its absence. Read the effective environment
 instead of inferring enablement solely from absent or historical conditions.
 
-On create, the operator writes the Role and RoleBinding from the table above and
-adds `DEST` to secret `$CR-default-cluster-config` in `$NS` for namespace-scoped
-instances; cluster-scoped instances do not use that secret. On a change of `.spec.managedBy`, it
-moves that RBAC. On delete, it removes the RBAC and the cluster-secret entry.
-Disabling the Subscription env cleans all of it up. A grant that vanished after an
-operator change is often this env flipping back to unset, not a deleted Application.
+A successful handshake supplies the bindings described above and adds `DEST` to
+`$CR-default-cluster-config` in `$NS` for namespace-scoped instances; cluster-scoped
+instances do not use that namespace list. Changing or deleting the handshake, or
+disabling the feature, can remove its grant and cluster-secret entry. Newer operators
+preserve a same-instance `managed-by` grant during this cleanup. Reuse the label and
+binding evidence: remaining RBAC can be expected, and a vanished grant requires
+checking effective configuration rather than assuming the Application was deleted.
 
 `spec.managedBy` is the only field on `NamespaceManagement`, and it is required.
 Each `ArgoCD.spec.namespaceManagement` entry requires both `name` and
@@ -369,11 +373,8 @@ Do not recommend:
 
 ## Source and version check
 
-The scope and OpenShift Role behavior above were checked against GitOps Operator
-`d99c55b3971ca4758b43efd69921164fcc88a257`: `setManagedNamespaces` in
-`argocd-operator/controllers/argocd/util.go`, reconciliation in `rolebinding.go`,
-and the Role hook in `controllers/argocd/openshift/openshift.go`.
-This is source-snapshot evidence, not a packaged-release compatibility guarantee.
-The snapshot depends on Argo CD 3.6.1; verify the installed operator release/schema
-and effective live rules before applying version-sensitive procedures to 1.21/3.4
-or another release.
+Verify the installed operator release, CRD schema and effective Role/ClusterRole rules
+before recommending grants. Behavior in one source version does not guarantee support
+in every packaged release. Relevant GitOps Operator code is `setManagedNamespaces`
+in `argocd-operator/controllers/argocd/util.go`, reconciliation in `rolebinding.go`,
+and the OpenShift Role hook in `controllers/argocd/openshift/openshift.go`.

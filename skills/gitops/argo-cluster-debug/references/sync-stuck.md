@@ -20,8 +20,8 @@ $KCTL get applications.argoproj.io "$APP" -n "$APP_NS" -o jsonpath=''\
 date -u +%Y-%m-%dT%H:%M:%SZ
 ```
 
-A sync with hooks and several waves legitimately takes as long as the slowest workload
-in each wave. Under a few minutes with waves in play is not stuck.
+Hooks and multiple waves can extend a sync. Judge progress from current resource
+evidence and expected deadlines, not a fixed grace period.
 
 ## 1. Find the wave or hook it is waiting on
 
@@ -46,12 +46,16 @@ $KCTL get <kind> <name> -n <ns> \
   -o jsonpath='{.metadata.annotations.argocd\.argoproj\.io/sync-wave}{"\n"}'
 ```
 
-This is the critical point: **the wave gate is health, not existence.** A Deployment
-that is applied successfully but whose pods never become ready blocks the wave
-indefinitely, and the sync looks stuck while the apply itself worked perfectly. When
-the blocker is a workload, the real question is why it is unhealthy —
-use the matching health leaf in `../SKILL.md`, or `app-health-triage.md` when the
-assessment is unresolved. Reuse the health snapshot.
+Successful apply does not prove an earlier wave can advance. While an assessed
+Deployment remains `Progressing`, it can block the next wave; `Degraded` can fail the
+operation instead. The final wave of non-hook tasks can complete without waiting for
+health, so verify which gate actually applies. For a workload blocker, read the matching
+health leaf in `../SKILL.md`, or `app-health-triage.md` when assessment is unresolved.
+Reuse the health snapshot.
+
+`SkipHealthCheck=true` in the desired resource's `argocd.argoproj.io/sync-options`
+annotation can complete a non-hook task after apply. It is absent in 3.4; verify
+support only when present. Do not enable it to hide unhealthy workloads.
 
 ## 2. Hooks
 
