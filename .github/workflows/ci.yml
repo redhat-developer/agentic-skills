@@ -61,6 +61,12 @@ jobs:
       - name: Check skill registration
         run: bash scripts/check-skill-registration.sh
 
+      - name: Manifest registration regression tests
+        run: bash tests/registration/test-manifest-checks.sh
+
+      - name: Release packaging produces correct archives
+        run: bash tests/release/test-packaging.sh
+
       - name: blast-radius behaviour (incl. the silent-zero failure paths)
         run: bash tests/blast-radius/test.sh
 

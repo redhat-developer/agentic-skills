@@ -57,5 +57,6 @@ The sub-agent should not be told the expectations — it must produce the correc
 4. Add evaluation scenarios in `evals/evals.json` with specific expectations
 5. Add test fixtures in `tests/{skill-name}/` covering distinct scenarios
 6. Register the skill in `.claude-plugin/marketplace.json` under `plugins[0].skills`
-7. If the skill uses schemas, add its schema directory to the `Makefile`
-8. Document the skill in `README.md` with example prompts and usage instructions
+7. Add a `catalog-info.yaml` Compass manifest in the skill directory (see existing skills for the template), set `metadata.description` to match `SKILL.md` frontmatter exactly, and add it as a target in the root `catalog-info.yaml` Location
+8. If the skill uses schemas, add its schema directory to the `Makefile`
+9. Document the skill in `README.md` with example prompts and usage instructions

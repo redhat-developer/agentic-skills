@@ -12,7 +12,7 @@ ROLLOUTS_MANAGER_VERSION := v0.10.0
 IMAGE_UPDATER_VERSION := v1.3.1
 ROLLOUTS_VERSION := v1.8.2
 
-.PHONY: help check-numbers baseline with-skill grade hooks hooks-uninstall scan-secrets history history-check download-schemas clean-schemas test-discover test-validate test-registration test-expectations score score-json score-compare eval eval-knowledge eval-repo-audit eval-cluster-debug eval-performance-tuning
+.PHONY: help check-numbers baseline with-skill grade hooks hooks-uninstall scan-secrets history history-check download-schemas clean-schemas test-discover test-validate test-release test-registration test-registration-regression test-expectations test-blast-radius score score-json score-compare eval eval-knowledge eval-repo-audit eval-cluster-debug eval-performance-tuning
 
 # Fetch a CRD schema from an arbitrary URL, selecting the STORAGE version rather than
 # versions[0] — the ArgoCD CR serves both v1alpha1 and v1beta1 and we want v1beta1.
@@ -103,11 +103,17 @@ score-compare: ## Diff this run against a prior one: make score-compare PRIOR=pa
 test-expectations: ## Validate eval expectations' field paths against the Argo CRD schemas
 	@bash scripts/check-eval-expectations.sh
 
+test-release: ## Verify release packaging produces correct archives for nested skills
+	@bash tests/release/test-packaging.sh
+
 test-blast-radius: ## Behavioural tests for scripts/blast-radius.sh (stubbed oc, no cluster needed)
 	@bash tests/blast-radius/test.sh
 
 test-registration: ## Check every skill is registered in manifests, agent, Makefile, banner, docs
 	@bash scripts/check-skill-registration.sh
+
+test-registration-regression: ## Regression tests for manifest registration checks
+	@bash tests/registration/test-manifest-checks.sh
 
 test-validate: ## Run validation script on test fixtures
 	$(VALIDATE_SCRIPT) -d $(TEST_DIR)/app-of-apps

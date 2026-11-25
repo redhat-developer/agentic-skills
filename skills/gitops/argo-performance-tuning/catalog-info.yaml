@@ -1,0 +1,44 @@
+apiVersion: backstage.io/v1alpha1
+kind: AiResource
+metadata:
+  name: argo-performance-tuning
+  namespace: ai5-marketplace
+  title: Argo Performance Tuning
+  description: >
+    Diagnoses and tunes OpenShift GitOps / Argo CD performance and scalability — reducing
+    unnecessary reconciliation at the source (resource-update ignore rules, resource
+    exclusions, monorepo manifest-cache scoping), repo-server Git and caching behavior,
+    application-controller sharding (static and dynamic) and concurrency, Kubernetes client
+    tuning against managed clusters, self-heal pacing, API-server timeouts, and
+    reconciliation/webhook tuning. Maps symptoms (slow or stuck UI, OOMKilled repo-server,
+    backed-up sync queue, Git provider rate-limiting, sluggish drift detection, "context
+    deadline exceeded" errors, high baseline CPU from status churn or repeated self-heal) to
+    the specific setting that fixes them, for both standalone Argo CD (ConfigMaps + env vars)
+    and the OpenShift GitOps Operator (ArgoCD CR). Use when users report Argo CD or OpenShift
+    GitOps running slowly at scale, hitting OOM, timing out, or ask how to tune, scale, speed
+    up, or reduce resource usage of GitOps reconciliation.
+  labels:
+    distribution: external
+  annotations:
+    backstage.io/source-location: >-
+      url:https://github.com/redhat-developer/agentic-skills/blob/main/skills/gitops/argo-performance-tuning/SKILL.md
+  tags:
+    - ai-skill
+    - gitops
+    - argocd
+  links:
+    - url: https://github.com/redhat-developer/agentic-skills
+      title: Source Repository
+      icon: github
+spec:
+  type: skill
+  lifecycle: beta
+  owner: group:redhat/ai5-marketplace
+  disciplines:
+    - gitops
+  categories:
+    - cluster-management
+  agents: []
+  dependsOn:
+    - airesource:ai5-marketplace/openshift-gitops
+  dependencyOf: []

@@ -50,6 +50,33 @@ for path in $SKILL_PATHS; do
   [ -f "$path/evals/evals.json" ]      || note "$path/evals/evals.json"
   [ -f "benchmarks/$skill.md" ]        || note "benchmarks/$skill.md"
 
+  # Compass catalog-info.yaml: existence, root Location target, description match.
+  # Uses yq (mikefarah/yq, installed by CI) for reliable YAML parsing.
+  manifest="$path/catalog-info.yaml"
+  if [ -f "$manifest" ]; then
+    # Root Location must exist and list this manifest in spec.targets (not elsewhere).
+    if [ ! -f catalog-info.yaml ]; then
+      note "root catalog-info.yaml missing"
+    else
+      if ! yq ".spec.targets[]" catalog-info.yaml 2>/dev/null | grep -qxF "./$manifest"; then
+        note "catalog-info.yaml spec.targets missing ./$manifest"
+      fi
+    fi
+    # Full description comparison: yq extracts the value with proper YAML semantics
+    # (block scalars, quotes, folding). Normalize whitespace for comparison.
+    m_norm=$(yq -r '.metadata.description // ""' "$manifest" 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//')
+    s_norm=$(sed -n '1{/^---$/!q}; 1,/^---$/{/^---$/d; p}' "$path/SKILL.md" | yq -r '.description // ""' 2>/dev/null | tr '\n' ' ' | sed 's/  */ /g; s/^ //; s/ $//')
+    if [ -z "$m_norm" ]; then
+      note "$manifest has missing or empty description"
+    elif [ -z "$s_norm" ]; then
+      note "$path/SKILL.md has missing or empty description"
+    elif [ "$m_norm" != "$s_norm" ]; then
+      note "$manifest description does not match SKILL.md"
+    fi
+  else
+    note "$manifest"
+  fi
+
   grep -q "\"./$path\""                .claude-plugin/marketplace.json || note ".claude-plugin/marketplace.json entry for ./$path"
   grep -q "^  - $skill\$"              agents/claude-code/argocd.md    || note "agents/claude-code/argocd.md skills: list"
   grep -q "^eval-$short:"              Makefile                        || note "Makefile target eval-$short"
@@ -66,6 +93,47 @@ for path in $SKILL_PATHS; do
   grep -q "skills/$product/$skill/SKILL.md" agents/codex/argocd.toml || note "agents/codex/argocd.toml [[skills.config]] entry"
   grep -q "skills/$product/$skill/SKILL.md" agents/github-copilot/argocd.agent.md || note "agents/github-copilot/argocd.agent.md skill list"
 done
+
+# Compass System ↔ plugin coherence (requires yq).
+if command -v yq >/dev/null 2>&1; then
+  # Both root entities are required when either exists.
+  [ -f system.yaml ]                    || note "system.yaml missing"
+  [ -f openshift-gitops-plugin.yaml ]   || note "openshift-gitops-plugin.yaml missing"
+
+  if [ -f system.yaml ]; then
+    sys_name=$(yq -r '.metadata.name // ""' system.yaml 2>/dev/null)
+    [ -n "$sys_name" ] || note "system.yaml metadata.name empty or invalid"
+  fi
+
+  if [ -f openshift-gitops-plugin.yaml ]; then
+    plugin_system=$(yq -r '.spec.system // ""' openshift-gitops-plugin.yaml 2>/dev/null)
+    [ -n "$plugin_system" ] || note "plugin spec.system empty or missing"
+
+    if [ -f system.yaml ] && [ -n "$sys_name" ] && [ -n "$plugin_system" ]; then
+      if [ "$plugin_system" != "default/$sys_name" ]; then
+        note "plugin spec.system ($plugin_system) does not match system.yaml name (default/$sys_name)"
+      fi
+    fi
+
+    # Plugin spec.skills must be a YAML sequence of strings listing exactly
+    # the discovered skills. A mapping or missing key must not pass.
+    skills_kind=$(yq '.spec.skills | type' openshift-gitops-plugin.yaml 2>/dev/null)
+    if [ "$skills_kind" != '!!seq' ]; then
+      note "plugin spec.skills is not a sequence (got $skills_kind)"
+    else
+      plugin_skills=$(yq -r '.spec.skills[]' openshift-gitops-plugin.yaml 2>/dev/null | sort)
+      expected_skills=""
+      for path in $SKILL_PATHS; do
+        skill=$(echo "$path" | sed 's|.*/||')
+        expected_skills=$(printf '%s\nairesource:ai5-marketplace/%s' "$expected_skills" "$skill")
+      done
+      expected_skills=$(echo "$expected_skills" | sed '/^$/d' | sort)
+      if [ "$plugin_skills" != "$expected_skills" ]; then
+        note "plugin spec.skills does not match discovered skills"
+      fi
+    fi
+  fi
+fi
 
 # The README badge and the Benchmarks notice cite an eval count. The banner drifted two
 # skills behind before anyone noticed; don't let the same happen to a number.

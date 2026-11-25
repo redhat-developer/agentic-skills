@@ -1,0 +1,41 @@
+apiVersion: backstage.io/v1alpha1
+kind: AiResource
+metadata:
+  name: argo-knowledge
+  namespace: ai5-marketplace
+  title: Argo Knowledge
+  description: >
+    Knowledge base for Red Hat OpenShift GitOps — Argo CD and Argo Rollouts as shipped by
+    the OpenShift GitOps operator. Use when generating, reviewing, debugging, or explaining
+    CRDs (Application, ApplicationSet, AppProject, ArgoCD, Rollout, AnalysisTemplate,
+    Experiment, RolloutManager, NotificationsConfiguration, NamespaceManagement,
+    ImageUpdater), configuring notifications, image updater, sync policies, progressive
+    delivery strategies, or designing GitOps repository patterns. Argo Workflows and Argo
+    Events are out of scope. Also use when the user asks about Argo best practices,
+    common mistakes, or needs to choose between Argo approaches (e.g., app-of-apps vs
+    ApplicationSet, canary vs blue-green, directory vs branch-per-environment).
+  labels:
+    distribution: external
+  annotations:
+    backstage.io/source-location: >-
+      url:https://github.com/redhat-developer/agentic-skills/blob/main/skills/gitops/argo-knowledge/SKILL.md
+  tags:
+    - ai-skill
+    - gitops
+    - argocd
+  links:
+    - url: https://github.com/redhat-developer/agentic-skills
+      title: Source Repository
+      icon: github
+spec:
+  type: skill
+  lifecycle: beta
+  owner: group:redhat/ai5-marketplace
+  disciplines:
+    - gitops
+  categories:
+    - cluster-management
+  agents: []
+  dependsOn:
+    - airesource:ai5-marketplace/openshift-gitops
+  dependencyOf: []
