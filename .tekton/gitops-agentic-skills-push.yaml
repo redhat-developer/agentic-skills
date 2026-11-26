@@ -32,12 +32,12 @@ spec:
     - latest
     - '{{target_branch}}'
   pipelineSpec:
-    description: "Minimal pipeline that packages the agent skills into an OCI image.\n\
-      \n_The image is `FROM scratch` with a single COPY of skills/ \u2014 no base\
-      \ image, no\ndependencies, nothing compiled \u2014 so it uses only the tasks\
-      \ that are strictly\nneeded: clone the repo, build the image with `buildah`,\
-      \ and tag it. Scan and\nSAST tasks are omitted because there is nothing in the\
-      \ image to scan. Data is\nshared between tasks via [trusted artifacts](https://konflux-ci.dev/architecture/ADR/0036-trusted-artifacts.html)._\n"
+    description: "Konflux build pipeline that packages the agent skills into an OCI\
+      \ image.\n\n_The image is `FROM scratch` with a single COPY of skills/ \u2014\
+      \ no base image, no\ndependencies, nothing compiled. The standard scan/SAST\
+      \ tasks are kept in the\npipeline (several only pass vacuously on a scratch\
+      \ image) so the Enterprise\nContract `@redhat` rule set is satisfied. Data is\
+      \ shared between tasks via\n[trusted artifacts](https://konflux-ci.dev/architecture/ADR/0036-trusted-artifacts.html)._\n"
     params:
     - description: Source Repository URL
       name: git-url
@@ -79,6 +79,24 @@ spec:
       type: string
       description: The format for the resulting image's mediaType. Valid values are
         oci or docker.
+    - default: ''
+      description: Path to a file relative to the root of the source repository that
+        contains the input to prefetch-dependencies. Empty for this repo (no package
+        managers), the task then runs as a passthrough.
+      name: prefetch-input
+      type: string
+    - default: 'true'
+      description: Enable the package registry proxy in the prefetch-dependencies task
+      name: enable-package-registry-proxy
+      type: string
+    - default: 'false'
+      description: Skip the post-build checks (scan and SAST tasks)
+      name: skip-checks
+      type: string
+    - default: ./skills
+      description: Directories that should be recursively scanned by SAST tasks
+      name: sast-target-dirs
+      type: string
     results:
     - description: ''
       name: IMAGE_URL
@@ -127,6 +145,36 @@ spec:
       workspaces:
       - name: basic-auth
         workspace: git-auth
+    - name: prefetch-dependencies
+      params:
+      - name: input
+        value: $(params.prefetch-input)
+      - name: enable-package-registry-proxy
+        value: $(params.enable-package-registry-proxy)
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
+      - name: ociStorage
+        value: $(params.output-image).prefetch
+      - name: ociArtifactExpiresAfter
+        value: $(params.image-expires-after)
+      - name: dev-package-managers
+        value: 'true'
+      runAfter:
+      - clone-repository
+      taskRef:
+        params:
+        - name: name
+          value: prefetch-dependencies-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-prefetch-dependencies-oci-ta:0.11.0@sha256:3839c8468b08b3aab55f4cc92e645ad275012f8ef8235a504aca397121a9e7da
+        - name: kind
+          value: task
+        resolver: bundles
+      workspaces:
+      - name: git-basic-auth
+        workspace: git-auth
+      - name: netrc
+        workspace: netrc
     - name: build-container
       params:
       - name: IMAGE
@@ -150,9 +198,13 @@ spec:
       - name: NO_PROXY
         value: $(tasks.init.results.no-proxy)
       - name: SOURCE_ARTIFACT
-        value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
+        value: $(tasks.prefetch-dependencies.results.SOURCE_ARTIFACT)
+      - name: PREFETCH_INPUT
+        value: $(params.prefetch-input)
+      - name: PREFETCH_ARTIFACT
+        value: $(tasks.prefetch-dependencies.results.PREFETCH_ARTIFACT)
       runAfter:
-      - clone-repository
+      - prefetch-dependencies
       taskRef:
         params:
         - name: name
@@ -168,8 +220,10 @@ spec:
         value: $(tasks.build-container.results.IMAGE_URL)
       - name: BINARY_IMAGE_DIGEST
         value: $(tasks.build-container.results.IMAGE_DIGEST)
+      - name: PREFETCH_ARTIFACT
+        value: $(tasks.prefetch-dependencies.results.PREFETCH_ARTIFACT)
       - name: SOURCE_ARTIFACT
-        value: $(tasks.clone-repository.results.SOURCE_ARTIFACT)
+        value: $(tasks.prefetch-dependencies.results.SOURCE_ARTIFACT)
       runAfter:
       - build-container
       taskRef:
@@ -181,6 +235,235 @@ spec:
         - name: kind
           value: task
         resolver: bundles
+    - name: deprecated-base-image-check
+      params:
+      - name: IMAGE_URL
+        value: $(tasks.build-container.results.IMAGE_URL)
+      - name: IMAGE_DIGEST
+        value: $(tasks.build-container.results.IMAGE_DIGEST)
+      runAfter:
+      - build-container
+      taskRef:
+        params:
+        - name: name
+          value: deprecated-image-check
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-deprecated-image-check:0.5@sha256:f86e420c8af92a8ed9ca8f82dee3cd14f8ba03cc592583595ea78642513f00c2
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(params.skip-checks)
+        operator: in
+        values:
+        - 'false'
+    - name: roxctl-scan
+      params:
+      - name: image-digest
+        value: $(tasks.build-container.results.IMAGE_DIGEST)
+      - name: image-url
+        value: $(tasks.build-container.results.IMAGE_URL)
+      runAfter:
+      - build-container
+      taskRef:
+        params:
+        - name: name
+          value: roxctl-scan
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-roxctl-scan:0.2@sha256:78e49dd18ed8e438d28cbd27e7d93f98b3dab35dd77df7930810b747c6033d6e
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(params.skip-checks)
+        operator: in
+        values:
+        - 'false'
+    - name: clamav-scan
+      params:
+      - name: image-digest
+        value: $(tasks.build-container.results.IMAGE_DIGEST)
+      - name: image-url
+        value: $(tasks.build-container.results.IMAGE_URL)
+      runAfter:
+      - build-container
+      taskRef:
+        params:
+        - name: name
+          value: clamav-scan
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-clamav-scan:0.3.6@sha256:0428b55c59b3d830b60ea1fcbfcd94b858b158e493fbd1a3dfb79192fff95662
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(params.skip-checks)
+        operator: in
+        values:
+        - 'false'
+      matrix:
+        params:
+        - name: image-arch
+          value:
+          - linux/x86_64
+    - name: sast-snyk-check
+      params:
+      - name: image-digest
+        value: $(tasks.build-container.results.IMAGE_DIGEST)
+      - name: image-url
+        value: $(tasks.build-container.results.IMAGE_URL)
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.prefetch-dependencies.results.SOURCE_ARTIFACT)
+      - name: ARGS
+        value: "--project-name=portfolio-and-delivery-red-hat-openshift-gitops-agentic-skills --report --org=1c11db74-1ffa-4b66-b80a-21d644643e70"
+      - name: TARGET_DIRS
+        value: $(params.sast-target-dirs)
+      runAfter:
+      - build-container
+      taskRef:
+        params:
+        - name: name
+          value: sast-snyk-check-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-sast-snyk-check-oci-ta:0.5.1@sha256:53443febc3a87ea6d4baacffc70d6f7dbdd1b4e69e0852337661097c73433519
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(params.skip-checks)
+        operator: in
+        values:
+        - 'false'
+    - name: sast-shell-check
+      params:
+      - name: image-digest
+        value: $(tasks.build-container.results.IMAGE_DIGEST)
+      - name: image-url
+        value: $(tasks.build-container.results.IMAGE_URL)
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.prefetch-dependencies.results.SOURCE_ARTIFACT)
+      - name: TARGET_DIRS
+        value: $(params.sast-target-dirs)
+      runAfter:
+      - build-container
+      taskRef:
+        params:
+        - name: name
+          value: sast-shell-check-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-sast-shell-check-oci-ta:0.1.1@sha256:83722286ec3297e3f66b0c220cec8895e0f745337e464c1d1c038ed737cf69fd
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(params.skip-checks)
+        operator: in
+        values:
+        - 'false'
+    - name: sast-unicode-check
+      params:
+      - name: image-digest
+        value: $(tasks.build-container.results.IMAGE_DIGEST)
+      - name: image-url
+        value: $(tasks.build-container.results.IMAGE_URL)
+      - name: SOURCE_ARTIFACT
+        value: $(tasks.prefetch-dependencies.results.SOURCE_ARTIFACT)
+      - name: TARGET_DIRS
+        value: $(params.sast-target-dirs)
+      runAfter:
+      - build-container
+      taskRef:
+        params:
+        - name: name
+          value: sast-unicode-check-oci-ta
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-sast-unicode-check-oci-ta:0.4.1@sha256:2ee89730856f542d851d99b5d945963583a840c295354dc4257a0052841e35ab
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(params.skip-checks)
+        operator: in
+        values:
+        - 'false'
+    - name: rpms-signature-scan
+      params:
+      - name: image-url
+        value: $(tasks.build-container.results.IMAGE_URL)
+      - name: image-digest
+        value: $(tasks.build-container.results.IMAGE_DIGEST)
+      runAfter:
+      - build-container
+      taskRef:
+        params:
+        - name: name
+          value: rpms-signature-scan
+        - name: bundle
+          value: quay.io/konflux-ci/tekton-catalog/task-rpms-signature-scan:0.2.2@sha256:a09426471bb6300723ccca8f212cd71621db60ce1acf22bc0eef4e3ba17034de
+        - name: kind
+          value: task
+        resolver: bundles
+      when:
+      - input: $(params.skip-checks)
+        operator: in
+        values:
+        - 'false'
+    - name: test-skills
+      params:
+      - name: git-url
+        value: $(params.git-url)
+      - name: revision
+        value: $(params.revision)
+      - name: image-digest
+        value: $(tasks.build-container.results.IMAGE_DIGEST)
+      runAfter:
+      - build-container
+      taskSpec:
+        params:
+        - name: git-url
+          type: string
+        - name: revision
+          type: string
+        - name: image-digest
+          type: string
+        results:
+        - name: TEST_OUTPUT
+          description: Test result consumed by the Enterprise Contract (test.test_data_found)
+        - name: IMAGES_PROCESSED
+          description: Digest of the image the test ran against
+        steps:
+        - name: validate-skills
+          image: registry.access.redhat.com/ubi9/ubi:latest
+          script: |
+            #!/bin/sh
+            set -eu
+            curl -fsSL "$(params.git-url)/archive/$(params.revision).tar.gz" -o /tmp/src.tar.gz
+            mkdir /tmp/src
+            tar -xzf /tmp/src.tar.gz -C /tmp/src
+            cd /tmp/src/*/
+            errors=0
+            set -- skills/*/*/SKILL.md
+            if [ "$#" -eq 0 ] || [ ! -f "$1" ]; then
+              echo "ERROR: no skills found under skills/*/*/SKILL.md (extracted: $(pwd))"
+              errors=1
+            fi
+            for f in "$@"; do
+              if [ ! -s "$f" ]; then
+                echo "ERROR: $f is empty"
+                errors=1
+                continue
+              fi
+              head -n 1 "$f" | grep -q '^---$' || { echo "ERROR: $f missing YAML frontmatter"; errors=1; }
+              grep -q '^name:' "$f" || { echo "ERROR: $f missing 'name'"; errors=1; }
+              grep -q '^description:' "$f" || { echo "ERROR: $f missing 'description'"; errors=1; }
+            done
+            if [ "$errors" -ne 0 ]; then
+              printf 'FAILED\n' | tee "$(results.TEST_OUTPUT.path)"
+              exit 1
+            fi
+            echo "All skill manifests valid"
+            printf 'SUCCESS\n' | tee "$(results.TEST_OUTPUT.path)"
+            printf '%s\n' "$(params.image-digest)" > "$(results.IMAGES_PROCESSED.path)"
     - name: apply-tags
       params:
       - name: ADDITIONAL_TAGS
