@@ -32,7 +32,6 @@ metadata:
     argo-skills-eval-fixture: "true"
     pod-security.kubernetes.io/enforce: baseline
 ---
----
 apiVersion: v1
 kind: Namespace
 metadata:
@@ -96,6 +95,7 @@ metadata:
   labels:
     argo-skills-eval-fixture: "true"
     pod-security.kubernetes.io/enforce: baseline
+---
 apiVersion: v1
 kind: Namespace
 metadata:
