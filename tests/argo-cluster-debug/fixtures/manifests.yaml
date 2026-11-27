@@ -1,8 +1,8 @@
 # argo-cluster-debug eval fixtures — TEMPORARY, torn down after the run.
 # Every object carries argo-skills-eval-fixture=true so teardown is unambiguous.
 #
-# Covers evals 1, 2, 4, 5, 6, 8 and 9 — every scenario whose named resources did not
-# otherwise exist, which previously capped both arms at `partial`.
+# Covers evals 1, 2, 4, 5, 6, 8, 9, 13–23 — every scenario whose named resources
+# did not otherwise exist, which previously capped both arms at `partial`.
 #
 # Namespaces `production` and `prod` are created here because that is what the eval
 # prompts name. teardown.sh will only delete a namespace that carries the fixture
@@ -20,6 +20,78 @@ apiVersion: v1
 kind: Namespace
 metadata:
   name: finance
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-catalog
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-crashloop
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-pending
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-project-deny
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-healthy
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-configerror
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: argocd
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-window
+  labels:
+    argo-skills-eval-fixture: "true"
+    pod-security.kubernetes.io/enforce: baseline
+---
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: eval-unready
   labels:
     argo-skills-eval-fixture: "true"
     pod-security.kubernetes.io/enforce: baseline
@@ -431,3 +503,384 @@ spec:
         server: https://kubernetes.default.svc
         namespace: apps
       syncPolicy: {}
+---
+# EVAL 13 — "Application bad-repo won't sync — status is Unknown"
+# Unreachable Git URL. Never syncs; ComparisonError carries the concrete message
+# (Repository not found / authentication required / failed to list refs).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bad-repo
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/this-org-does-not-exist-xyz123/no-such-repo.git
+    targetRevision: HEAD
+    path: manifests
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apps
+  syncPolicy: {}
+---
+# EVAL 14 — "Application bad-path points at argocd-example-apps but stays Unknown"
+# Valid public repo, path that does not exist. Discriminates from eval 13: the
+# ComparisonError is about the path, not repository-not-found / auth.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: bad-path
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: this-path-does-not-exist
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apps
+  syncPolicy: {}
+---
+# EVAL 15 — "Application catalog shows Synced but Degraded"
+# Bad image is IN the desired source (Kustomize images override), so after a
+# successful sync the live state matches git → Synced + Degraded via
+# ImagePullBackOff. Own destination namespace so it does not fight eval 1's
+# podinfo over the same guestbook Deployment in apps.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: catalog
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/nonexistent-eval:9.9.9
+      # Keep Degraded appearing in ~1min rather than the Deployment default of 10.
+      # Must live in desired state: selfHeal is on so a live-only patch would revert.
+      patches:
+        - target:
+            kind: Deployment
+          patch: |-
+            - op: add
+              path: /spec/progressDeadlineSeconds
+              value: 60
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-catalog
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+
+---
+# EVAL 16 — Synced + Degraded via CrashLoopBackOff (not ImagePull)
+# Working image, crashing command. Discriminates from eval 15 (pull failure).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: crashloop-api
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/ubi-minimal:latest
+      patches:
+        - target:
+            kind: Deployment
+          patch: |-
+            - op: add
+              path: /spec/progressDeadlineSeconds
+              value: 60
+            - op: add
+              path: /spec/template/spec/containers/0/command
+              value: ["/bin/sh", "-c", "exit 1"]
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-crashloop
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# EVAL 17 — Synced + Progressing: pods Pending (unschedulable nodeSelector)
+# No short progressDeadline — must stay Progressing, not tip into Degraded,
+# so it discriminates from evals 1/15/16.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: pending-api
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+      patches:
+        - target:
+            kind: Deployment
+          patch: |-
+            - op: add
+              path: /spec/template/spec/nodeSelector
+              value:
+                argo-skills-eval-no-such-node: "true"
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-pending
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# EVAL 18 — SyncError: AppProject allow-list denies Service (guestbook has one)
+# Not ComparisonError (manifests generate fine); sync/apply is what fails.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: eval-locked
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  description: Fixture project that only permits Deployments — guestbook Service is denied
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: eval-project-deny
+      server: https://kubernetes.default.svc
+  namespaceResourceWhitelist:
+    - group: apps
+      kind: Deployment
+  clusterResourceWhitelist: []
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: project-denied
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: eval-locked
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-project-deny
+  syncPolicy:
+    automated:
+      prune: false
+      selfHeal: false
+---
+# EVAL 19 — Healthy Synced control: prompt implies something is wrong; nothing is.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: payments-api
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-healthy
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# EVAL 20 — Synced + Degraded: CreateContainerConfigError (missing Secret)
+# envFrom secretRef to a Secret that does not exist. Distinct from ImagePull (15),
+# CrashLoop (16), and Pending/unschedulable (17).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: configerror-api
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+      patches:
+        - target:
+            kind: Deployment
+          patch: |-
+            - op: add
+              path: /spec/progressDeadlineSeconds
+              value: 60
+            - op: add
+              path: /spec/template/spec/containers/0/envFrom
+              value:
+                - secretRef:
+                    name: eval-missing-secret
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-configerror
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# EVAL 21 — Application CR in namespace "argocd" while OpenShift GitOps watches
+# openshift-gitops. Never reconciled; distinct from knowledge eval 11
+# (NamespaceManagement tenant handshake).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: orphaned-app
+  namespace: argocd
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: apps
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# EVAL 22 — automated sync present but always-deny syncWindow blocks it.
+# Distinct from knowledge eval 17 (generate syncWindows) and from missing syncPolicy.
+apiVersion: argoproj.io/v1alpha1
+kind: AppProject
+metadata:
+  name: eval-windowed
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  description: Fixture project with a permanent deny sync window
+  sourceRepos:
+    - '*'
+  destinations:
+    - namespace: eval-window
+      server: https://kubernetes.default.svc
+  clusterResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  namespaceResourceWhitelist:
+    - group: '*'
+      kind: '*'
+  syncWindows:
+    - kind: deny
+      schedule: '* * * * *'
+      duration: 24h
+      applications:
+        - window-blocked
+      manualSync: false
+---
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: window-blocked
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: eval-windowed
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-window
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+---
+# EVAL 23 — Synced + Progressing: pods Running but readiness probe always fails.
+# Distinct from Pending/unschedulable (17) and CrashLoop (16).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: unready-api
+  namespace: openshift-gitops
+  labels:
+    argo-skills-eval-fixture: "true"
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/argoproj/argocd-example-apps.git
+    targetRevision: HEAD
+    path: kustomize-guestbook
+    kustomize:
+      images:
+        - gcr.io/google-samples/gb-frontend=registry.access.redhat.com/ubi8/httpd-24:latest
+      patches:
+        - target:
+            kind: Deployment
+          patch: |-
+            - op: add
+              path: /spec/template/spec/containers/0/readinessProbe
+              value:
+                httpGet:
+                  path: /this-readiness-path-does-not-exist
+                  port: 8080
+                initialDelaySeconds: 1
+                periodSeconds: 3
+                failureThreshold: 1
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: eval-unready
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
