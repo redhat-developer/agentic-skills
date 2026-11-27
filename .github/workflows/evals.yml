@@ -62,7 +62,7 @@ jobs:
 
       - name: Checkout
         if: steps.filter.outputs.skip == 'false' && matrix.needs_cluster == false
-        uses: actions/checkout@v4
+        uses: actions/checkout@v7
 
       - name: Install tools
         if: steps.filter.outputs.skip == 'false' && matrix.needs_cluster == false
