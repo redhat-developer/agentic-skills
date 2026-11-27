@@ -56,8 +56,13 @@ def main():
 
     # root README table
     readme = (ROOT / "README.md").read_text()
+    readme_rows = [l for l in readme.splitlines() if l.startswith("|")]
     for s, (w, b, _) in truth.items():
-        m = re.search(rf"\[`{re.escape(s)}`\][^|]*\|\s*\**([\d.]+)%\**\s*\|\s*\**([\d.]+)%\**", readme)
+        row = next((l for l in readme_rows if f"[`{s}`]" in l.split("|")[1]), None)
+        if not row:
+            problems.append(f"README.md: no row for {s}")
+            continue
+        m = re.search(r"\|\s*\**([\d.]+)%\**\s*\|\s*\**([\d.]+)%\**", row)
         if not m:
             problems.append(f"README.md: no row for {s}")
             continue
@@ -72,8 +77,13 @@ def main():
 
     # benchmarks/README.md table
     bench = (ROOT / "benchmarks" / "README.md").read_text()
+    bench_rows = [l for l in bench.splitlines() if l.startswith("|")]
     for s, (w, b, _) in truth.items():
-        m = re.search(rf"`{re.escape(s)}`\s*\|\s*\**([\d.]+)%\**\s*\|\s*\**?([\d.]+)%", bench)
+        row = next((l for l in bench_rows if f"`{s}`" in l.split("|")[1]), None)
+        if not row:
+            problems.append(f"benchmarks/README.md: no row for {s}")
+            continue
+        m = re.search(r"\|\s*\**([\d.]+)%\**\s*\|\s*\**?([\d.]+)%", row)
         if not m:
             problems.append(f"benchmarks/README.md: no row for {s}")
             continue
